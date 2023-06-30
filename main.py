@@ -41,6 +41,10 @@ EXPLODE_LIST = [arcade.texture.load_texture(EXPLODE),
 
 HEAL = "images/heal.png"
 SHIELD = "images/shield.png"
+UNLIMITED_BULLET = ["images/player_skill1_false.png", "images/pill_blue.png", ["images/player_skill1_hint1.png",
+                                                                               "images/player_skill1_hint2.png"]]
+CHASE_FIRE = ["images/player_skill2_false.png", "images/player_skill2_true.png", ["images/player_skill2_hint1.png",
+                                                                                  "images/player_skill2_hint2.png"]]
 
 FIRE_SOUND = "sound/laser1.wav"
 
@@ -76,6 +80,26 @@ class BackgroundObjects(arcade.Sprite):
         self.center_y -= BACKGROUND_SPEED * delta_time
         if self.top < 0:
             self.remove_from_sprite_lists()
+
+
+class TextureButton(arcade.gui.UITextureButton):
+    def __init__(self, textures, cur_index=0, update_time=0.25, enable=False, *args, **kwargs):
+        super().__init__(texture=textures[cur_index], *args, **kwargs)
+        self.many_textures = textures
+        self.current_indexing = cur_index
+        self.total_update_time = self.update_time = update_time
+        self.enabled = enable
+
+    def on_update(self, dt):
+        if not self.enabled:
+            self.texture = self.many_textures[0]
+            return
+        self.update_time -= dt
+        if self.update_time <= 0:
+            self.update_time = self.total_update_time
+            self.current_indexing += 1
+            self.current_indexing %= len(self.many_textures)
+            self.texture = self.many_textures[self.current_indexing]
 
 
 class Benefit(arcade.Sprite):
@@ -128,7 +152,21 @@ class Shield(Benefit):
         self.kill()
 
 
-BENEFITS = {Healer: HEAL, Shield: SHIELD}
+class UnlimitedBullet(Benefit):
+    def on_touched(self, player):
+        player: Player
+        player.skills[0] = True
+        self.kill()
+
+
+class ChaseFire(Benefit):
+    def on_touched(self, player):
+        player: Player
+        player.skills[1] = True
+        self.kill()
+
+
+BENEFITS = {Healer: HEAL, Shield: SHIELD, UnlimitedBullet: UNLIMITED_BULLET[1], ChaseFire: CHASE_FIRE[1]}
 
 
 class LivingSprite(arcade.Sprite):
@@ -259,25 +297,28 @@ class Enemy(LivingSprite):
             return None
         if self.fire_cd <= 0:
             self.fire_cd = self.total_fire_cd
-            bullet = Bullet((self.center_x, self.bottom), self.chase, self.game_view.player)
+            bullet = Bullet(center=(self.center_x, self.bottom), chase=self.chase, player=self.game_view.player)
             self.game_view.game_scene.add_sprite("EnemyBullet", bullet)
             self.bullets.append(bullet)
 
 
 class Bullet(arcade.Sprite):
-    def __init__(self, center, chase=NO, player=None, damage=1):
+    def __init__(self, center, image=None, chase=NO, player=None, damage=1, chase_time=1, speed=BULLET_SPEED):
         """
         创建一颗子弹
         :param chase: 子弹是否追踪
         :param player: 玩家位置，用在追踪时计算
         :param damage: 该子弹命中时造成的伤害
         """
-        super().__init__(random.choice(BULLET))
+        if image is None:
+            super().__init__(random.choice(BULLET))
+        else:
+            super().__init__(image)
         self.chase = chase
         self.player = player
         self.center_x = center[0]
         self.center_y = center[1]
-        self.chase_time = 1
+        self.chase_time = chase_time
         if self.chase != NO and self.player is None:
             raise ValueError("子弹进行追踪必须获取玩家位置")
         if chase == SIMPLE:
@@ -285,22 +326,25 @@ class Bullet(arcade.Sprite):
             y_diff = player.center_y - self.center_y
             angle = math.atan2(y_diff, x_diff)
             self.angle = math.degrees(angle) - 90
-            self.change_y = math.sin(angle) * BULLET_SPEED
-            self.change_x = math.cos(angle) * BULLET_SPEED
+            self.change_y = math.sin(angle) * speed
+            self.change_x = math.cos(angle) * speed
         elif chase == NO:
-            self.change_y = -BULLET_SPEED
+            self.change_y = -speed
 
         self.damage = damage
+        self.speed = speed
 
     def on_update(self, delta_time=None):
         self.chase_time -= delta_time
+        if self.player.health <= 0:
+            self.kill()
         if self.chase == HARD and self.chase_time > 0:
             x_diff = self.player.center_x - self.center_x
             y_diff = self.player.center_y - self.center_y
             angle = math.atan2(y_diff, x_diff)
             self.angle = math.degrees(angle) - 90
-            self.change_y = math.sin(angle) * BULLET_SPEED
-            self.change_x = math.cos(angle) * BULLET_SPEED
+            self.change_y = math.sin(angle) * self.speed
+            self.change_x = math.cos(angle) * self.speed
         if self.center_x > SCREEN_WIDTH or self.center_x < 0 or self.center_y > SCREEN_HEIGHT or self.center_y < 0:
             self.kill()
 
@@ -309,6 +353,10 @@ class Bullet(arcade.Sprite):
 
 
 class PlayerBullet(arcade.Sprite):
+    def __init__(self, images, go_through=False):
+        super().__init__(images)
+        self.through = go_through
+
     def on_update(self, delta_time: float = 1 / 60):
         self.center_y += delta_time * PLAYER_BULLET_SPEED
         if self.top > SCREEN_HEIGHT:
@@ -325,6 +373,7 @@ class Player(LivingSprite):
 
     def __init__(self, game_view, image=None, scale=1.0, fire_cd=0.25):
         super().__init__(image, scale, health=5, invincible=0.5)
+        self.bullet_through = False
         self.fire_cd = self.total_fire_cd = fire_cd
         self.game_view: GameView = game_view
         self.append_texture(arcade.load_texture(PLAYER_HURT))
@@ -341,6 +390,8 @@ class Player(LivingSprite):
         self.invincible_effect = arcade.Sprite(texture=arcade.texture.make_soft_circle_texture(100, (95, 185, 240)))
         self.invincible_effect.visible = False
         self.game_view.game_scene.add_sprite("Player", self.invincible_effect)
+
+        self.skills = {0: False, 1: False}
 
     def on_update(self, delta_time=None):
         super().on_update(delta_time)
@@ -381,7 +432,7 @@ class Player(LivingSprite):
     def fire(self):
         if self.fire_cd <= 0 < self.health:
             self.fire_cd = self.total_fire_cd
-            player_bullet = PlayerBullet(random.choice(PLAYER_BULLET))
+            player_bullet = PlayerBullet(random.choice(PLAYER_BULLET), self.bullet_through)
             player_bullet.center_x = self.center_x
             player_bullet.center_y = self.top
             self.game_view.game_scene.add_sprite("PlayerBullet", player_bullet)
@@ -397,6 +448,33 @@ class Player(LivingSprite):
         elif delta_health > 0:
             self.set_texture(2)
         self.game_view.clock.schedule_once(lambda event: self.set_texture(0), 0.5)
+
+    def unlimited_bullets(self, duration=10):
+        """
+        技能1:技能期间发弹间隔大幅度缩短，且子弹可以穿透敌方
+        :param duration: 持续时间
+        :return: 无
+        """
+        if self.skills[0]:
+            self.skills[0] = False
+            self.total_fire_cd = 0.05
+            self.bullet_through = True
+            self.game_view.clock.schedule_once(lambda event: setattr(self, "total_fire_cd", 0.25), duration)
+            self.game_view.clock.schedule_once(lambda event: setattr(self, "bullet_through", False), duration)
+
+    def chase_bullets(self):
+        """
+        你的攻击，结束了吗。现在，轮到我了，没意见吧！
+        向场上所有敌方单位发射一颗伤害为10的追踪弹
+        （搞笑的是，这个追踪弹其实用的是敌方子弹的类，只不过把追踪目标选成了敌方）
+        :return:
+        """
+        if self.skills[1]:
+            self.skills[1] = False
+            for enemy in self.game_view.game_scene.get_sprite_list("Enemy"):
+                bullet = Bullet((self.center_x, self.center_y), PLAYER_BULLET[0], chase=HARD, player=enemy, damage=10,
+                                chase_time=9999999, speed=600)
+                self.game_view.game_scene.add_sprite("PlayerBullet", bullet)
 
 
 class Explosion(arcade.Sprite):
@@ -499,11 +577,34 @@ class GameView(arcade.View):
         # 但加载音频会导致肉眼可见的卡顿
         # 因此这里以零音量播放一次，让其提前加载好
         self.fire_sound.play(volume=0)
+
+        self.game_v_box_right = arcade.gui.UIBoxLayout()
         self.pause_button = arcade.gui.UITextureButton(texture=arcade.load_texture("images/pause_square.png"))
         self.pause_button.on_click = self.on_click_pause
+        self.game_v_box_right.add(self.pause_button)
 
         self.fps_text = arcade.gui.UITextArea(text="FPS: 0", height=30, width=200,
                                               font_name="Kenney Future", font_size=20)
+
+        self.player_skill1_texture = [arcade.load_texture(UNLIMITED_BULLET[0]),
+                                      arcade.load_texture(UNLIMITED_BULLET[1]),
+                                      [arcade.load_texture(UNLIMITED_BULLET[2][0]),
+                                       arcade.load_texture(UNLIMITED_BULLET[2][1])]]
+        self.player_skill1_image = arcade.gui.UITextureButton(texture=self.player_skill1_texture[0], width=64, height=64)
+        self.player_skill1_hint = TextureButton(textures=self.player_skill1_texture[2], width=50, height=50)
+
+        self.player_skill2_texture = [arcade.load_texture(CHASE_FIRE[0]),
+                                      arcade.load_texture(CHASE_FIRE[1]),
+                                      [arcade.load_texture(CHASE_FIRE[2][0]),
+                                       arcade.load_texture(CHASE_FIRE[2][1])]]
+        self.player_skill2_image = arcade.gui.UITextureButton(texture=self.player_skill2_texture[0], width=64,
+                                                              height=64)
+        self.player_skill2_hint = TextureButton(textures=self.player_skill2_texture[2], width=50, height=50)
+
+        self.game_v_box_right.add(self.player_skill1_image.with_space_around(top=30))
+        self.game_v_box_right.add(self.player_skill1_hint.with_space_around())
+        self.game_v_box_right.add(self.player_skill2_image.with_space_around(top=30))
+        self.game_v_box_right.add(self.player_skill2_hint.with_space_around())
 
         self.game_ui_manager.add(arcade.gui.UIAnchorWidget(
             anchor_x="left",
@@ -524,7 +625,7 @@ class GameView(arcade.View):
             align_y=-30,
             align_x=-30,
             anchor_y='top',
-            child=self.pause_button
+            child=self.game_v_box_right
         ))
         self.game_ui_manager.add(arcade.gui.UIAnchorWidget(
             anchor_x="left",
@@ -600,6 +701,21 @@ class GameView(arcade.View):
             else:
                 self.score_text.text = f""
 
+            # 更新玩家技能提示
+            if self.player.skills[0]:
+                self.player_skill1_hint.enabled = True
+                self.player_skill1_image.texture = self.player_skill1_texture[1]
+            else:
+                self.player_skill1_hint.enabled = False
+                self.player_skill1_image.texture = self.player_skill1_texture[0]
+
+            if self.player.skills[1]:
+                self.player_skill2_hint.enabled = True
+                self.player_skill2_image.texture = self.player_skill2_texture[1]
+            else:
+                self.player_skill2_hint.enabled = False
+                self.player_skill2_image.texture = self.player_skill2_texture[0]
+
             # 首先，随机的生成一些背景中的小东西
             if random.randint(0, 100) > 99:
                 picture = random.randint(0, 7)
@@ -622,7 +738,8 @@ class GameView(arcade.View):
                 one_enemy: Enemy
                 for one_bullet in one_enemy.collides_with_list(self.game_scene["PlayerBullet"]):
                     one_enemy.on_damaged(one_bullet)
-                    one_bullet.kill()
+                    if not hasattr(one_bullet, "through") or not one_bullet.through:
+                        one_bullet.kill()
                     if one_enemy.health <= 0:
                         explode = Explosion((one_enemy.center_x, one_enemy.center_y))
                         self.game_scene.add_sprite("Explosion", explode)
@@ -695,6 +812,10 @@ class GameView(arcade.View):
             self.fps_enable = not self.fps_enable
         if key == SCORE_KEY:
             self.score_enable = not self.score_enable
+        if key == arcade.key.KEY_1:
+            self.player.unlimited_bullets(10)
+        if key == arcade.key.KEY_2:
+            self.player.chase_bullets()
 
     def on_key_release(self, key: object, modifiers):
         """Called when the user releases a key. """
