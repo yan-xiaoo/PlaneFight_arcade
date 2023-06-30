@@ -286,7 +286,7 @@ class Enemy(LivingSprite):
     def kill(self):
         for one_bullet in self.bullets:
             one_bullet.kill()
-        if random.random() < 0.5:
+        if random.random() < 0.15:
             benefit = random.choice(list(BENEFITS.keys()))
             self.game_view.game_scene.add_sprite("Benefit",
                                                  benefit(image=BENEFITS[benefit], scale=2, center=(self.center_x, self.center_y)))
@@ -449,7 +449,7 @@ class Player(LivingSprite):
             self.set_texture(2)
         self.game_view.clock.schedule_once(lambda event: self.set_texture(0), 0.5)
 
-    def unlimited_bullets(self, duration=10):
+    def unlimited_bullets(self, duration=5):
         """
         技能1:技能期间发弹间隔大幅度缩短，且子弹可以穿透敌方
         :param duration: 持续时间
@@ -470,6 +470,8 @@ class Player(LivingSprite):
         :return:
         """
         if self.skills[1]:
+            if len(self.game_view.game_scene["Enemy"]) == 0:
+                return
             self.skills[1] = False
             for enemy in self.game_view.game_scene.get_sprite_list("Enemy"):
                 bullet = Bullet((self.center_x, self.center_y), PLAYER_BULLET[0], chase=HARD, player=enemy, damage=10,
@@ -813,7 +815,7 @@ class GameView(arcade.View):
         if key == SCORE_KEY:
             self.score_enable = not self.score_enable
         if key == arcade.key.KEY_1:
-            self.player.unlimited_bullets(10)
+            self.player.unlimited_bullets(5)
         if key == arcade.key.KEY_2:
             self.player.chase_bullets()
 
