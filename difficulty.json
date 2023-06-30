@@ -1,0 +1,52 @@
+{
+    "0": {
+        "speed": [
+            200,
+            300
+        ],
+        "fire": false,
+        "chase": "no",
+        "health": 1,
+        "fire_cd": 1.5
+    },
+    "1": {
+        "speed": [
+            250,
+            300
+        ],
+        "fire": false,
+        "chase": "no",
+        "health": 1,
+        "fire_cd": 1.5
+    },
+    "2": {
+        "speed": [
+            200,
+            230
+        ],
+        "fire": true,
+        "chase": "no",
+        "health": 1,
+        "fire_cd": 0.9
+    },
+    "3": {
+        "speed": [
+            180,
+            200
+        ],
+        "fire": true,
+        "chase": "simple",
+        "health": 1,
+        "fire_cd": 1.3
+    },
+    "4": {
+        "speed": [
+            180,
+            210
+        ],
+        "fire": true,
+        "chase": "hard",
+        "health": 1,
+        "fire_cd": 1.5
+    }
+}
