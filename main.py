@@ -41,10 +41,11 @@ EXPLODE_LIST = [arcade.texture.load_texture(EXPLODE),
 
 HEAL = "images/heal.png"
 SHIELD = "images/shield.png"
-UNLIMITED_BULLET = ["images/player_skill1_false.png", "images/pill_blue.png", ["images/player_skill1_hint1.png",
-                                                                               "images/player_skill1_hint2.png"]]
-CHASE_FIRE = ["images/player_skill2_false.png", "images/player_skill2_true.png", ["images/player_skill2_hint1.png",
-                                                                                  "images/player_skill2_hint2.png"]]
+UNLIMITED_BULLET = ["images/player_skill1_false.png", "images/player_skill1_true.png",
+                    ["images/player_skill1_hint1.png",
+                     "images/player_skill1_hint2.png"]]
+CHASE_FIRE = ["images/player_skill2_false.png", "images/missile.png", ["images/player_skill2_hint1.png",
+                                                                       "images/player_skill2_hint2.png"]]
 
 FIRE_SOUND = "sound/laser1.wav"
 
@@ -92,7 +93,7 @@ class TextureButton(arcade.gui.UITextureButton):
 
     def on_update(self, dt):
         if not self.enabled:
-            self.texture = self.many_textures[0]
+            self.texture = self.many_textures[1]
             return
         self.update_time -= dt
         if self.update_time <= 0:
@@ -106,6 +107,7 @@ class Benefit(arcade.Sprite):
     """
     游戏中所有可以被玩家触碰捡起，给玩家带来好处的物体的基类
     """
+
     def __init__(self, image, scale=1.0, center=None, time=10):
         super().__init__(image, scale)
         if center is not None:
@@ -289,7 +291,8 @@ class Enemy(LivingSprite):
         if random.random() < 0.15:
             benefit = random.choice(list(BENEFITS.keys()))
             self.game_view.game_scene.add_sprite("Benefit",
-                                                 benefit(image=BENEFITS[benefit], scale=2, center=(self.center_x, self.center_y)))
+                                                 benefit(image=BENEFITS[benefit], scale=2,
+                                                         center=(self.center_x, self.center_y)))
         super().kill()
 
     def fire(self):
@@ -373,6 +376,8 @@ class Player(LivingSprite):
 
     def __init__(self, game_view, image=None, scale=1.0, fire_cd=0.25):
         super().__init__(image, scale, health=5, invincible=0.5)
+        self._enemy = []
+        self._enemy_killed = 0
         self.bullet_through = False
         self.fire_cd = self.total_fire_cd = fire_cd
         self.game_view: GameView = game_view
@@ -470,13 +475,36 @@ class Player(LivingSprite):
         :return:
         """
         if self.skills[1]:
-            if len(self.game_view.game_scene["Enemy"]) == 0:
-                return
             self.skills[1] = False
-            for enemy in self.game_view.game_scene.get_sprite_list("Enemy"):
-                bullet = Bullet((self.center_x, self.center_y), PLAYER_BULLET[0], chase=HARD, player=enemy, damage=10,
+            self._enemy_killed = 0
+            self._enemy = []
+            self.game_view.clock.schedule_interval_soft(self._chase_bullets, 0.2)
+
+    def _chase_bullets(self, _):
+        for enemy in self.game_view.game_scene.get_sprite_list("Enemy"):
+            if enemy not in self._enemy and self._enemy_killed + len(self._enemy) <= 6:
+                self._enemy.append(enemy)
+                bullet = Bullet((self.center_x, self.center_y), CHASE_FIRE[1], chase=HARD, player=enemy, damage=10,
                                 chase_time=9999999, speed=600)
                 self.game_view.game_scene.add_sprite("PlayerBullet", bullet)
+
+        for one in self._enemy:
+            one: arcade.Sprite
+            if not one.sprite_lists:
+                self._enemy_killed += 1
+                self._enemy.remove(one)
+
+        if self._enemy_killed >= 10:
+            self._enemy.clear()
+            self.game_view.clock.unschedule(self._chase_bullets)
+
+    def on_damaged(self, bullet):
+        if self.bullet_through:
+            # 一技能期间有50%概率不受攻击伤害
+            if random.random() < 0.5:
+                super().on_damaged(bullet)
+        else:
+            super().on_damaged(bullet)
 
 
 class Explosion(arcade.Sprite):
@@ -592,7 +620,8 @@ class GameView(arcade.View):
                                       arcade.load_texture(UNLIMITED_BULLET[1]),
                                       [arcade.load_texture(UNLIMITED_BULLET[2][0]),
                                        arcade.load_texture(UNLIMITED_BULLET[2][1])]]
-        self.player_skill1_image = arcade.gui.UITextureButton(texture=self.player_skill1_texture[0], width=64, height=64)
+        self.player_skill1_image = arcade.gui.UITextureButton(texture=self.player_skill1_texture[0], width=64,
+                                                              height=64)
         self.player_skill1_hint = TextureButton(textures=self.player_skill1_texture[2], width=50, height=50)
 
         self.player_skill2_texture = [arcade.load_texture(CHASE_FIRE[0]),
