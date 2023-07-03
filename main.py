@@ -46,6 +46,7 @@ UNLIMITED_BULLET = ["images/player_skill1_false.png", "images/player_skill1_true
                      "images/player_skill1_hint2.png"]]
 CHASE_FIRE = ["images/player_skill2_false.png", "images/missile.png", ["images/player_skill2_hint1.png",
                                                                        "images/player_skill2_hint2.png"]]
+HEALTH_IMAGES = ["images/heart_empty.png", "images/heart.png"]
 
 FIRE_SOUND = "sound/laser1.wav"
 
@@ -101,6 +102,24 @@ class TextureButton(arcade.gui.UITextureButton):
             self.current_indexing += 1
             self.current_indexing %= len(self.many_textures)
             self.texture = self.many_textures[self.current_indexing]
+
+
+class HealthBar:
+    def __init__(self, health_images, game_scene):
+        self.health_images = health_images
+        game_scene: GameView
+        self.game_scene = game_scene
+        self.buttons = [arcade.gui.UITextureButton(texture=health_images[1]) for _ in range(5)]
+        self.box = arcade.gui.UIBoxLayout(vertical=False)
+        for one in self.buttons:
+            self.box.add(one.with_space_around(right=5))
+
+    def on_update(self, _):
+        health = self.game_scene.player.health
+        for i in range(health):
+            self.buttons[i].texture = self.health_images[1]
+        for i in range(health, self.game_scene.player.total_health):
+            self.buttons[i].texture = self.health_images[0]
 
 
 class Benefit(arcade.Sprite):
@@ -637,6 +656,8 @@ class GameView(arcade.View):
         self.game_v_box_right.add(self.player_skill2_image.with_space_around(top=30))
         self.game_v_box_right.add(self.player_skill2_hint.with_space_around())
 
+        self.health_bar = HealthBar([arcade.load_texture(HEALTH_IMAGES[0]), arcade.load_texture(HEALTH_IMAGES[1])], self)
+
         self.game_ui_manager.add(arcade.gui.UIAnchorWidget(
             anchor_x="left",
             align_x=30,
@@ -647,7 +668,7 @@ class GameView(arcade.View):
         self.game_ui_manager.add(arcade.gui.UIAnchorWidget(
             anchor_x="left",
             align_x=30,
-            align_y=-120,
+            align_y=-150,
             anchor_y="top",
             child=self.score_text
         ))
@@ -664,6 +685,13 @@ class GameView(arcade.View):
             align_y=30,
             anchor_y="bottom",
             child=self.fps_text
+        ))
+        self.game_ui_manager.add(arcade.gui.UIAnchorWidget(
+            anchor_x='left',
+            align_x=30,
+            align_y=-100,
+            anchor_y='top',
+            child=self.health_bar.box
         ))
         # 建立游戏对象
         self.game_scene: arcade.Scene = arcade.Scene()
@@ -722,15 +750,15 @@ class GameView(arcade.View):
             self.fps_text.text = f"FPS: {arcade.get_fps():.2f}"
         else:
             self.fps_text.text = ''
+        if self.score_enable:
+            self.score_text.text = f"Score: {self.score}"
+        else:
+            self.score_text.text = f""
         if not self.paused:
             # 先更新内容
             self.game_scene.on_update(diff)
             self.game_scene.update_animation(diff)
-
-            if self.score_enable:
-                self.score_text.text = f"Score: {self.score}"
-            else:
-                self.score_text.text = f""
+            self.health_bar.on_update(diff)
 
             # 更新玩家技能提示
             if self.player.skills[0]:
