@@ -32,6 +32,9 @@ PLAYER_BULLET = ["images/laser1.png"]
 ENEMY = ["images/enemy1.png", "images/enemy2.png",
          "images/enemy3.png", "images/enemy4.png"]
 
+BOSS = "images/boss.png"
+MISSILE_ENEMY = "images/missile_enemy.png"
+
 EXPLODE = "images/explode.png"
 EXPLODE_LIST = [arcade.texture.load_texture(EXPLODE),
                 arcade.texture.load_texture(EXPLODE, flipped_vertically=True),
@@ -195,7 +198,7 @@ class LivingSprite(arcade.Sprite):
     所有会拥有“生命”，会被有“攻击”的物体打死的物体的父类
     """
 
-    def __init__(self, image, scale=1, health=1, invincible=0.5, *args, **kwargs):
+    def __init__(self, image, scale=1, health=1, invincible=0.5, total_health=1, *args, **kwargs):
         super().__init__(image, scale, *args, **kwargs)
         self._extra_health = 0
         if health is None:
@@ -203,27 +206,37 @@ class LivingSprite(arcade.Sprite):
             self.total_health = 1
         else:
             self._health = health
-            self.total_health = health
+            self.total_health = total_health
         if invincible is None:
             self.total_invincible = 0.5
         else:
             self.total_invincible = invincible
         self.invincible = 0
+        self._max_damage = 1
 
     def on_update(self, delta_time: float = 1 / 60):
         if self.invincible > 0:
             self.invincible -= delta_time
+        if self.invincible <= 0:
+            self._max_damage = 1
 
     def on_damaged(self, bullet):
         if self.invincible <= 0:
             try:
                 self.health -= bullet.damage
+                self._max_damage = bullet.damage
             except AttributeError:
                 print("Warning: 出现未规定伤害的子弹，假设其伤害为1")
                 self.health -= 1
+                self._max_damage = 1
             self.invincible += self.total_invincible
             if self.health <= 0:
                 self.kill()
+        if hasattr(bullet, 'damage') and self.invincible > 0:
+            if bullet.damage > self._max_damage:
+                self.health -= bullet.damage
+                self.health += self._max_damage
+                self._max_damage = bullet.damage
 
     @property
     def health(self):
@@ -250,6 +263,120 @@ class LivingSprite(arcade.Sprite):
     @total_health.setter
     def total_health(self, value):
         self._total_health = value
+
+
+class Boss(LivingSprite):
+    def __init__(self, image, game_scene, scale=1, health=1, invincible=0.5, total_health=1, *args, **kwargs):
+        super().__init__(image, scale, health, invincible, total_health, *args, **kwargs)
+        self.skill3_count = None
+        self.skill2_count = None
+        self._shot_count = None
+        self.towards = 1
+        self.game_view: GameView = game_scene
+        self.damage = 1
+
+        self.skill_cd = [6, 10, 15, 0]
+        self.total_skill_cd = [16, 10, 15, 25]
+        self.main_cd = 0
+        self.main_cd_total = 6
+        self.right_range = SCREEN_WIDTH
+        self.left_range = 0
+        self.skills = [self.shot, self.chase_shot, self.many_bullets, self.additional_planes]
+
+    def on_update(self, delta_time: float = 1 / 60):
+        super().on_update(delta_time)
+        self.center_x += random.randint(0, 200) * delta_time * self.towards
+        if self.center_x + self.width / 2 > self.right_range:
+            self.center_x = self.right_range - self.width / 2
+            self.towards = -self.towards
+        if self.center_x < self.left_range + self.width / 2:
+            self.center_x = self.left_range + self.width / 2
+            self.towards = -self.towards
+
+        for one in range(len(self.skill_cd)):
+            self.skill_cd[one] -= delta_time
+        self.main_cd -= delta_time
+
+        self.skill()
+
+    def skill(self):
+        skill_available = [self.skills[i] for i in range(len(self.skills)) if self.skill_cd[i] <= 0]
+        if random.random() < 0.1 and len(skill_available) > 0 >= self.main_cd:
+            self.main_cd = self.main_cd_total
+            skill = random.choice(skill_available)
+            index = self.skills.index(skill)
+            self.skill_cd[index] = self.total_skill_cd[index]
+            skill()
+
+    def drop_benefit(self):
+        benefit = random.choice(list(BENEFITS.keys()))
+        b = benefit(BENEFITS[benefit], center=(random.randint(int(SCREEN_WIDTH / 2 - 150), int(SCREEN_WIDTH / 2 + 150)),
+                                               random.randint(int(SCREEN_HEIGHT / 2 - 150),
+                                                              int(SCREEN_HEIGHT / 2 + 100))),
+                    scale=2)
+        self.game_view.game_scene.add_sprite("Benefit", b)
+
+    def on_health_change(self, delta_health):
+        benefit = False
+        for one in range(self.health, self.health + abs(delta_health)):
+            if one % 50 == 0:
+                benefit = True
+        if benefit:
+            self.drop_benefit()
+
+    def shot(self):
+        self.game_view.clock.schedule_interval_soft(self._shot, 0.75)
+        self._shot_count = 0
+
+    def _shot(self, _=None):
+        bullet = Bullet((self.center_x, self.bottom), BULLET[1], chase=NO, speed=250)
+        self.game_view.game_scene.add_sprite("EnemyBullet", bullet)
+        self._shot_count += 1
+        if self._shot_count >= 8:
+            self.game_view.clock.unschedule(self._shot)
+
+    def chase_shot(self):
+        self.skill2_count = 0
+        self.game_view.clock.schedule_interval_soft(self._chase_shot, 0.5)
+
+    def _chase_shot(self, _=None):
+        self.skill2_count += 1
+        bullet = Bullet((self.center_x, self.bottom), MISSILE_ENEMY, chase=HARD, speed=250, chase_time=1.5, player=self.game_view.player)
+        self.game_view.game_scene.add_sprite("EnemyBullet", bullet)
+        if self.skill2_count >= 3:
+            self.game_view.clock.unschedule(self._chase_shot)
+
+    def many_bullets(self):
+        self.skill3_count = 0
+        self.game_view.clock.schedule_interval_soft(self._many_bullets, 0.1)
+    
+    def _many_bullets(self, _=None):
+        self.skill3_count += 1
+        bullet1 = Bullet((self.center_x, self.bottom), BULLET[1], chase=SIMPLE, speed=350, player=self.game_view.player)
+        bullet2 = Bullet((self.center_x - 30, self.bottom), BULLET[1], chase=SIMPLE, speed=350, player=self.game_view.player)
+        bullet3 = Bullet((self.center_x + 30, self.bottom), BULLET[1], chase=SIMPLE, speed=350, player=self.game_view.player)
+        self.game_view.game_scene.add_sprite("EnemyBullet", bullet1)
+        self.game_view.game_scene.add_sprite("EnemyBullet", bullet2)
+        self.game_view.game_scene.add_sprite("EnemyBullet", bullet3)
+
+        if self.skill3_count >= 10:
+            self.game_view.clock.unschedule(self._many_bullets)
+
+    def additional_planes(self):
+        plane_a = SpecialPlane(image=ENEMY[0], scale=1, game_view=self.game_view, fire=True, chase=SIMPLE, center_y=self.center_y, health=4, invincible=0)
+        plane_b = SpecialPlane(image=ENEMY[0], scale=1, game_view=self.game_view, fire=True, chase=SIMPLE, center_y=self.center_y, health=4, invincible=0)
+        plane_a.center_x = 70
+        plane_a.total_fire_cd = plane_b.total_fire_cd = 1.5
+        plane_b.center_x = SCREEN_WIDTH - 70
+
+        self.left_range = 110
+        self.right_range = SCREEN_WIDTH - 110
+
+        self.game_view.game_scene.add_sprite("Enemy", plane_a)
+        self.game_view.game_scene.add_sprite("Enemy", plane_b)
+
+        self.game_view.clock.schedule_once(lambda event: setattr(self, "left_range", 0), 15)
+        self.game_view.clock.schedule_once(lambda event: setattr(self, "right_range", SCREEN_WIDTH), 15)
 
 
 class Enemy(LivingSprite):
@@ -293,7 +420,7 @@ class Enemy(LivingSprite):
             raise ValueError("敌机子弹追踪必须要获取我方位置")
 
         self.bullets = []
-        self.health = health if health is not None else 1
+        self.total_health = self.health = health if health is not None else 1
         self.damage = damage if damage is not None else 1
 
     def on_update(self, delta_time: float = 1 / 60):
@@ -324,8 +451,29 @@ class Enemy(LivingSprite):
             self.bullets.append(bullet)
 
 
+class SpecialPlane(Enemy):
+    def __init__(self, image, scale=1, life_time=15, *args, **kwargs):
+        super().__init__(image=image, scale=scale, *args, **kwargs)
+        self.life = life_time
+        self.change_y = 0
+
+    def on_update(self, delta_time: float = 1 / 60):
+        super().on_update(delta_time)
+        self.life -= delta_time
+        if self.life <= 0:
+            self.kill()
+
+    def kill(self):
+        if self.life > 0:
+            benefit = random.choice(list(BENEFITS.keys()))
+            self.game_view.game_scene.add_sprite("Benefit",
+                                                 benefit(image=BENEFITS[benefit], scale=2,
+                                                         center=(self.center_x, self.center_y)))
+        super().kill()
+
+
 class Bullet(arcade.Sprite):
-    def __init__(self, center, image=None, chase=NO, player=None, damage=1, chase_time=1, speed=BULLET_SPEED):
+    def __init__(self, center, image=None, chase=NO, player=None, damage=1, chase_time=1.0, speed=BULLET_SPEED):
         """
         创建一颗子弹
         :param chase: 子弹是否追踪
@@ -358,7 +506,7 @@ class Bullet(arcade.Sprite):
 
     def on_update(self, delta_time=None):
         self.chase_time -= delta_time
-        if self.player.health <= 0:
+        if self.player is not None and self.player.health <= 0:
             self.kill()
         if self.chase == HARD and self.chase_time > 0:
             x_diff = self.player.center_x - self.center_x
@@ -394,7 +542,7 @@ class Player(LivingSprite):
     """
 
     def __init__(self, game_view, image=None, scale=1.0, fire_cd=0.25):
-        super().__init__(image, scale, health=5, invincible=0.5)
+        super().__init__(image, scale, health=5, total_health=5, invincible=0.5)
         self._enemy = []
         self._enemy_killed = 0
         self.bullet_through = False
@@ -483,8 +631,12 @@ class Player(LivingSprite):
             self.skills[0] = False
             self.total_fire_cd = 0.05
             self.bullet_through = True
-            self.game_view.clock.schedule_once(lambda event: setattr(self, "total_fire_cd", 0.25), duration)
-            self.game_view.clock.schedule_once(lambda event: setattr(self, "bullet_through", False), duration)
+            if not self.game_view.boss_fight:
+                self.game_view.clock.schedule_once(lambda event: setattr(self, "total_fire_cd", 0.25), duration)
+                self.game_view.clock.schedule_once(lambda event: setattr(self, "bullet_through", False), duration)
+            else:
+                self.game_view.clock.schedule_once(lambda event: setattr(self, "total_fire_cd", 0.25), duration * 2)
+                self.game_view.clock.schedule_once(lambda event: setattr(self, "bullet_through", False), duration * 2)
 
     def chase_bullets(self):
         """
@@ -497,7 +649,19 @@ class Player(LivingSprite):
             self.skills[1] = False
             self._enemy_killed = 0
             self._enemy = []
-            self.game_view.clock.schedule_interval_soft(self._chase_bullets, 0.2)
+            if not self.game_view.boss_fight:
+                self.game_view.clock.schedule_interval_soft(self._chase_bullets, 0.2)
+            else:
+                self.game_view.clock.schedule_interval_soft(self._chase_bullets_boss, 0.2)
+
+    def _chase_bullets_boss(self, _):
+        self._enemy_killed += 1
+        bullet = Bullet((self.center_x, self.center_y), CHASE_FIRE[1], chase=HARD, player=self.game_view.boss,
+                        damage=15,
+                        chase_time=9999999, speed=600)
+        self.game_view.game_scene.add_sprite("PlayerBullet", bullet)
+        if self._enemy_killed > 4:
+            self.game_view.clock.unschedule(self._chase_bullets_boss)
 
     def _chase_bullets(self, _):
         for enemy in self.game_view.game_scene.get_sprite_list("Enemy"):
@@ -607,6 +771,7 @@ class GameView(arcade.View):
         super().__init__()
         # 以下为游戏界面内容
         # 游戏中的GUI
+        self.boss_health = 1000
         self.game_ui_manager = arcade.gui.UIManager()
         self.game_v_box = arcade.gui.UIBoxLayout()
         exit_button = arcade.gui.UIFlatButton(0, 0, text="Main Menu",
@@ -656,7 +821,10 @@ class GameView(arcade.View):
         self.game_v_box_right.add(self.player_skill2_image.with_space_around(top=30))
         self.game_v_box_right.add(self.player_skill2_hint.with_space_around())
 
-        self.health_bar = HealthBar([arcade.load_texture(HEALTH_IMAGES[0]), arcade.load_texture(HEALTH_IMAGES[1])], self)
+        self.health_bar = HealthBar([arcade.load_texture(HEALTH_IMAGES[0]), arcade.load_texture(HEALTH_IMAGES[1])],
+                                    self)
+        self.boss_health_bar = arcade.gui.UITextArea(text="Boss: 1000 / 1000", font_name="Kenney Future", font_size=30,
+                                                     text_color=(255, 0, 0), width=500)
 
         self.game_ui_manager.add(arcade.gui.UIAnchorWidget(
             anchor_x="left",
@@ -712,6 +880,9 @@ class GameView(arcade.View):
         self.score = 0
         self.score_enable = True
 
+        self.boss_fight = False
+        self.boss = None
+
     def setup(self):
         # 创建场景
         self.game_scene = arcade.Scene()
@@ -733,6 +904,17 @@ class GameView(arcade.View):
         self.fps_enable = False
         self.score = 0
         self.score_enable = True
+        if self.boss_fight:
+            self.boss = Boss(image=BOSS, game_scene=self, health=self.boss_health, total_health=1000, invincible=0.1,
+                             center_x=SCREEN_WIDTH / 2, center_y=SCREEN_HEIGHT - 180)
+            self.game_scene.add_sprite("Enemy", self.boss)
+            self.game_ui_manager.add(arcade.gui.UIAnchorWidget(
+                anchor_x='center',
+                anchor_y='top',
+                align_y=-30,
+                align_x=50,
+                child=self.boss_health_bar
+            ))
 
     def on_draw(self):
         self.clear()
@@ -784,8 +966,27 @@ class GameView(arcade.View):
                                            BackgroundObjects(BACKGROUND_LISTS[picture],
                                                              scale=random.randint(75, 125) / 100))
             # 然后，随机生成敌人
-            if len(self.game_scene['Enemy']) <= 2 and random.random() < 0.1:
+            if len(self.game_scene['Enemy']) <= 2 and random.random() < 0.1 and not self.boss_fight:
                 spawn_enemy(self, [1, 3], str(get_difficulty(self.score)))
+
+            # 检查Boss该不该生成
+            if self.score > 500 and not self.boss_fight:
+                self.boss_fight = True
+                self.boss = Boss(image=BOSS, game_scene=self, health=self.boss_health, total_health=1000,
+                                 invincible=0.1,
+                                 center_x=SCREEN_WIDTH / 2, center_y=SCREEN_HEIGHT - 180)
+                self.game_scene.add_sprite("Enemy", self.boss)
+                self.game_ui_manager.add(arcade.gui.UIAnchorWidget(
+                    anchor_x='center',
+                    anchor_y='top',
+                    align_y=-30,
+                    align_x=50,
+                    child=self.boss_health_bar
+                ))
+
+            # Boss战时才更新的内容：
+            if self.boss_fight:
+                self.boss_health_bar.text = f"Boss: {self.boss.health} / {self.boss.total_health}"
 
             # 检查玩家是否获得增益
             for one_benefit in self.player.collides_with_list(self.game_scene["Benefit"]):
@@ -835,7 +1036,7 @@ class GameView(arcade.View):
 
             if self.player.health <= 0:
                 self.end_game(False)
-            if self.score > 500:
+            if self.boss_fight and self.boss.health <= 0:
                 self.end_game(True)
 
     def end_game(self, win: bool):
@@ -844,7 +1045,7 @@ class GameView(arcade.View):
         :param win: 游戏是否赢了，赢：True，输：False
         :return:
         """
-        over_view = GameOverView(win)
+        over_view = GameOverView(win, self)
         self.window.show_view(over_view)
 
     def on_key_press(self, key, modifiers):
@@ -936,12 +1137,14 @@ class GameOverView(arcade.View):
     游戏结束时的界面
     """
 
-    def __init__(self, result: bool):
+    def __init__(self, result: bool, game_scene):
         """
         :param result: True:胜利 False:失败
         """
         super().__init__()
         self.result = result
+        game_scene: GameView
+        self.game_scene = game_scene
         self.over_ui_manager = arcade.gui.UIManager()
         self.over_v_box = arcade.gui.UIBoxLayout()
         win = "Win!" if result else "Lose"
@@ -987,6 +1190,9 @@ class GameOverView(arcade.View):
 
     def replay(self, _=None):
         game_view = GameView()
+        if self.game_scene.boss_fight and not self.result:
+            game_view.boss_fight = True
+            game_view.boss_health = min(self.game_scene.boss.health + 50, self.game_scene.boss_health)
         self.window.show_view(game_view)
 
     def main_menu(self, _=None):
@@ -995,7 +1201,7 @@ class GameOverView(arcade.View):
 
 
 def main():
-    arcade.load_font("font/Kenney Pixel.ttf")
+    arcade.load_font("font/Kenney Future.ttf")
     arcade.enable_timings()
     window = arcade.Window(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
     arcade.set_background_color((42, 45, 50))
