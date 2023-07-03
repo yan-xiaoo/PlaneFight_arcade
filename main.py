@@ -1,6 +1,7 @@
 import random
 import math
 import json
+from collections import namedtuple
 
 import arcade
 import arcade.gui
@@ -50,6 +51,7 @@ UNLIMITED_BULLET = ["images/player_skill1_false.png", "images/player_skill1_true
 CHASE_FIRE = ["images/player_skill2_false.png", "images/missile.png", ["images/player_skill2_hint1.png",
                                                                        "images/player_skill2_hint2.png"]]
 HEALTH_IMAGES = ["images/heart_empty.png", "images/heart.png"]
+CANCEL_IMAGE = "images/cancel.png"
 
 FIRE_SOUND = "sound/laser1.wav"
 
@@ -62,6 +64,19 @@ with open("difficulty.json", 'r') as f:
 
 SCORE_DIFFICULTY = [[0, 100, 0], [100, 150, 1], [150, 200, 2],
                     [200, 300, 3], [300, 400, 4]]
+
+LOADING_HINTS = []
+try:
+    with open("loading_hints.txt", 'r', encoding='utf-8') as f:
+        while True:
+            one_hint = f.readline()
+            if not one_hint:
+                break
+            one_hint = one_hint.replace(r"\\n", '\n')
+            if not one_hint.startswith("#"):
+                LOADING_HINTS.append(one_hint.strip('\n'))
+except (UnicodeError, FileNotFoundError):
+    pass
 
 
 def get_difficulty(score: int):
@@ -341,7 +356,8 @@ class Boss(LivingSprite):
 
     def _chase_shot(self, _=None):
         self.skill2_count += 1
-        bullet = Bullet((self.center_x, self.bottom), MISSILE_ENEMY, chase=HARD, speed=250, chase_time=1.5, player=self.game_view.player)
+        bullet = Bullet((self.center_x, self.bottom), MISSILE_ENEMY, chase=HARD, speed=250, chase_time=1.5,
+                        player=self.game_view.player)
         self.game_view.game_scene.add_sprite("EnemyBullet", bullet)
         if self.skill2_count >= 3:
             self.game_view.clock.unschedule(self._chase_shot)
@@ -349,12 +365,14 @@ class Boss(LivingSprite):
     def many_bullets(self):
         self.skill3_count = 0
         self.game_view.clock.schedule_interval_soft(self._many_bullets, 0.1)
-    
+
     def _many_bullets(self, _=None):
         self.skill3_count += 1
         bullet1 = Bullet((self.center_x, self.bottom), BULLET[1], chase=SIMPLE, speed=350, player=self.game_view.player)
-        bullet2 = Bullet((self.center_x - 30, self.bottom), BULLET[1], chase=SIMPLE, speed=350, player=self.game_view.player)
-        bullet3 = Bullet((self.center_x + 30, self.bottom), BULLET[1], chase=SIMPLE, speed=350, player=self.game_view.player)
+        bullet2 = Bullet((self.center_x - 30, self.bottom), BULLET[1], chase=SIMPLE, speed=350,
+                         player=self.game_view.player)
+        bullet3 = Bullet((self.center_x + 30, self.bottom), BULLET[1], chase=SIMPLE, speed=350,
+                         player=self.game_view.player)
         self.game_view.game_scene.add_sprite("EnemyBullet", bullet1)
         self.game_view.game_scene.add_sprite("EnemyBullet", bullet2)
         self.game_view.game_scene.add_sprite("EnemyBullet", bullet3)
@@ -363,8 +381,10 @@ class Boss(LivingSprite):
             self.game_view.clock.unschedule(self._many_bullets)
 
     def additional_planes(self):
-        plane_a = SpecialPlane(image=ENEMY[0], scale=1, game_view=self.game_view, fire=True, chase=SIMPLE, center_y=self.center_y, health=4, invincible=0)
-        plane_b = SpecialPlane(image=ENEMY[0], scale=1, game_view=self.game_view, fire=True, chase=SIMPLE, center_y=self.center_y, health=4, invincible=0)
+        plane_a = SpecialPlane(image=ENEMY[0], scale=1, game_view=self.game_view, fire=True, chase=SIMPLE,
+                               center_y=self.center_y, health=4, invincible=0)
+        plane_b = SpecialPlane(image=ENEMY[0], scale=1, game_view=self.game_view, fire=True, chase=SIMPLE,
+                               center_y=self.center_y, health=4, invincible=0)
         plane_a.center_x = 70
         plane_a.total_fire_cd = plane_b.total_fire_cd = 1.5
         plane_b.center_x = SCREEN_WIDTH - 70
@@ -762,6 +782,111 @@ class MenuView(arcade.View):
         self.menu_ui_manager.disable()
 
 
+Rect = namedtuple("Rect", ['left', 'right', 'top', 'bottom'])
+
+
+class HelpView(arcade.View):
+    """
+    游戏内悬浮帮助的主要组件
+    """
+
+    def __init__(self, game_view, hints=None, rects: list[Rect] = None, show_keys=False):
+        super().__init__()
+        self.game_view: GameView = game_view
+        self.ui_manager = arcade.gui.UIManager()
+        self.exit_button = arcade.gui.UITextureButton(texture=arcade.load_texture(CANCEL_IMAGE))
+        self.exit_button.on_click = self.on_exit
+        self.hint = arcade.gui.UITextArea(text="", font_name="华文黑体", font_size=20, text_color=(255, 255, 255),
+                                          multiline=True)
+        self.hints = hints if hints is not None else ['']
+        self.rects = rects if rects is not None else []
+        if show_keys:
+            if 2 > len(self.hints) > 0:
+                self.hints[0] = self.hints[0] + "\n按下回车显示下一条\n按下ESC跳过教程"
+            elif len(self.hints) >= 2:
+                self.hints[0] = self.hints[0] + "\n按下回车显示下一条\n按下ESC跳过教程"
+                self.hints[1] = self.hints[1] + "\n按下Z键显示上一条\n按下回车显示下一条"
+        self.hint.text = self.hints[0]
+        self.hint.fit_content()
+        self.cursor = 0
+        self.ui_manager.add(arcade.gui.UIAnchorWidget(
+            anchor_x="right",
+            align_y=-30,
+            align_x=-30,
+            anchor_y='top',
+            child=self.exit_button
+        ))
+        self.ui_manager.add(arcade.gui.UIAnchorWidget(
+            anchor_x="center",
+            anchor_y='center',
+            child=self.hint
+        ))
+
+    def next(self):
+        self.cursor += 1
+        if self.cursor >= len(self.hints):
+            self.cursor = len(self.hints) - 1
+        self.hint.text = self.hints[self.cursor]
+        self.hint.fit_content()
+        try:
+            self.rects[self.cursor]
+        except IndexError:
+            pass
+        else:
+            rect = self.rects[self.cursor]
+            arcade.draw_lrtb_rectangle_outline(rect.left, rect.right, rect.top, rect.bottom,
+                                               color=(255, 255, 255), border_width=5)
+
+    def last(self):
+        self.cursor -= 1
+        if self.cursor < 0:
+            self.cursor = 0
+        self.cursor = self.cursor % len(self.hints)
+        self.hint.text = self.hints[self.cursor]
+        self.hint.fit_content()
+        try:
+            self.rects[self.cursor]
+        except IndexError:
+            pass
+        else:
+            rect = self.rects[self.cursor]
+            arcade.draw_lrtb_rectangle_outline(rect.left, rect.right, rect.top, rect.bottom,
+                                               color=(255, 255, 255), border_width=5)
+
+    def on_show_view(self):
+        self.ui_manager.enable()
+        self.game_view.game_ui_manager.disable()
+        self.game_view.paused = True
+
+    def on_hide_view(self):
+        self.ui_manager.disable()
+        self.game_view.game_ui_manager.enable()
+        self.game_view.paused = False
+
+    def on_update(self, delta_time: float):
+        self.game_view.update(delta_time)
+        self.ui_manager.on_update(delta_time)
+
+    def on_draw(self):
+        self.clear()
+        self.game_view.on_draw()
+        self.ui_manager.draw()
+
+    def on_exit(self, _=None):
+        self.window.show_view(self.game_view)
+
+    def on_key_press(self, key, _modifiers):
+        if key == arcade.key.ESCAPE:  # resume game
+            self.window.show_view(self.game_view)
+        if key == arcade.key.ENTER:
+            self.next()
+        if key == arcade.key.Z:
+            self.last()
+
+
+hints_status = {""}
+
+
 class GameView(arcade.View):
     """
     游戏的主程序
@@ -771,6 +896,7 @@ class GameView(arcade.View):
         super().__init__()
         # 以下为游戏界面内容
         # 游戏中的GUI
+        self.showed = False
         self.boss_health = 1000
         self.game_ui_manager = arcade.gui.UIManager()
         self.game_v_box = arcade.gui.UIBoxLayout()
@@ -882,6 +1008,7 @@ class GameView(arcade.View):
 
         self.boss_fight = False
         self.boss = None
+        self.setup()
 
     def setup(self):
         # 创建场景
@@ -987,6 +1114,11 @@ class GameView(arcade.View):
             # Boss战时才更新的内容：
             if self.boss_fight:
                 self.boss_health_bar.text = f"Boss: {self.boss.health} / {self.boss.total_health}"
+
+            if 1 < self.score < 15 and not self.showed:
+                self.showed = True
+                help_scene = HelpView(self, hints=["欢迎来到游戏！", "这是第二页！"], show_keys=True)
+                self.window.show_view(help_scene)
 
             # 检查玩家是否获得增益
             for one_benefit in self.player.collides_with_list(self.game_scene["Benefit"]):
@@ -1119,7 +1251,14 @@ class GameView(arcade.View):
 
     def on_show_view(self):
         self.game_ui_manager.enable()
-        self.setup()
+        self.up_pressed = False
+        self.down_pressed = False
+        self.left_pressed = False
+        self.right_pressed = False
+        self.player.change_x = 0
+        self.player.change_y = 0
+
+        self.firing = False
 
     def on_hide_view(self):
         self.game_ui_manager.disable()
@@ -1153,9 +1292,20 @@ class GameOverView(arcade.View):
         self.over_ui_manager.add(arcade.gui.UIAnchorWidget(
             anchor_x="center_x",
             anchor_y="center_y",
-            align_y=50,
+            align_y=100 if LOADING_HINTS else 70,
             child=main_text
         ))
+
+        self.hint_text = arcade.gui.UITextArea(font_name="华文黑体", font_size=25)
+        if LOADING_HINTS:
+            self.over_ui_manager.add(arcade.gui.UIAnchorWidget(
+                anchor_x="center_x",
+                anchor_y="center_y",
+                align_y=20,
+                child=self.hint_text
+            ))
+            self.hint_text.text = random.choice(LOADING_HINTS)
+            self.hint_text.fit_content()
 
         replay_button = arcade.gui.UIFlatButton(70, SCREEN_HEIGHT - 50, text="Replay",
                                                 width=250,
@@ -1174,9 +1324,21 @@ class GameOverView(arcade.View):
         self.over_ui_manager.add(arcade.gui.UIAnchorWidget(
             anchor_x="center_x",
             anchor_y="center_y",
-            align_y=-80,
+            align_y=-100 if LOADING_HINTS else -80,
             child=self.over_v_box
         ))
+
+        hint_text = arcade.gui.UITextArea(font_name="华文黑体", font_size=15)
+        self.over_ui_manager.add(arcade.gui.UIAnchorWidget(
+            anchor_x="right",
+            anchor_y="bottom",
+            align_x=-30,
+            align_y=30,
+            child=hint_text
+        ))
+        if LOADING_HINTS:
+            hint_text.text = "按Enter显示下一条"
+            hint_text.fit_content()
 
     def on_hide_view(self):
         self.over_ui_manager.disable()
@@ -1199,9 +1361,25 @@ class GameOverView(arcade.View):
         menu_view = MenuView()
         self.window.show_view(menu_view)
 
+    def next_hint(self):
+        try:
+            cursor = LOADING_HINTS.index(self.hint_text.text)
+        except ValueError:
+            return
+        else:
+            cursor += 1
+            cursor = cursor % len(LOADING_HINTS)
+        self.hint_text.text = LOADING_HINTS[cursor]
+        self.hint_text.fit_content()
+
+    def on_key_press(self, symbol: int, modifiers: int):
+        if symbol == arcade.key.ENTER and LOADING_HINTS:
+            self.next_hint()
+
 
 def main():
     arcade.load_font("font/Kenney Future.ttf")
+    arcade.load_font("font/华文黑体.ttf")
     arcade.enable_timings()
     window = arcade.Window(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
     arcade.set_background_color((42, 45, 50))
