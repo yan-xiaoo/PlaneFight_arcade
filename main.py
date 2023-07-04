@@ -54,6 +54,7 @@ HEALTH_IMAGES = ["images/heart_empty.png", "images/heart.png"]
 CANCEL_IMAGE = "images/cancel.png"
 
 FIRE_SOUND = "sound/laser1.wav"
+PLAY_FIRE_SOUND = True
 
 PLAYER_SPEED = 480  # 像素/秒
 BULLET_SPEED = 300
@@ -110,6 +111,12 @@ except KeyError:
         "heal": True,
         "shield": True
     }
+
+try:
+    with open("setting.txt", 'r') as f:
+        PLAY_FIRE_SOUND = bool(int(f.readline().strip()))
+except (FileNotFoundError, UnicodeError, ValueError):
+    PLAY_FIRE_SOUND = True
 
 
 def get_difficulty(score: int):
@@ -670,7 +677,8 @@ class Player(LivingSprite):
             player_bullet.center_x = self.center_x
             player_bullet.center_y = self.top
             self.game_view.game_scene.add_sprite("PlayerBullet", player_bullet)
-            self.game_view.fire_sound.play(volume=0.3)
+            if PLAY_FIRE_SOUND:
+                self.game_view.fire_sound.play(volume=0.3)
 
     def kill(self):
         super().kill()
@@ -948,12 +956,12 @@ class HelpView(arcade.View):
     def on_exit(self, _=None):
         self.window.show_view(self.game_view)
 
-    def on_key_press(self, key, _modifiers):
-        if key == arcade.key.ESCAPE:  # resume game
+    def on_key_press(self, symbol, _modifiers):
+        if symbol == arcade.key.ESCAPE:  # resume game
             self.window.show_view(self.game_view)
-        if key == arcade.key.ENTER:
+        if symbol == arcade.key.ENTER:
             self.next()
-        if key == arcade.key.Z:
+        if symbol == arcade.key.Z:
             self.last()
 
 
@@ -995,6 +1003,19 @@ class SettingView(arcade.View):
         self.complete_button.on_click = self.on_click_complete
         self.complete_area.add(self.complete_button)
 
+        self.sound_area = arcade.gui.UIBoxLayout(vertical=False)
+        text = "关闭射击音效" if PLAY_FIRE_SOUND else "开启射击音效"
+        self.sound_text = arcade.gui.UITextArea(text=text, font_name="华文黑体", font_size=20,
+                                                text_color=(255, 255, 255))
+        self.sound_text.fit_content()
+        self.sound_area.add(self.sound_text.with_space_around(right=30))
+        text = "Close" if PLAY_FIRE_SOUND else "Open"
+        self.sound_button = arcade.gui.UIFlatButton(text=text, width=150,
+                                                    style={"font_name": "Kenney Future", "font_size": 20,
+                                                           "bg_color": (56, 56, 56)})
+        self.sound_button.on_click = self.on_click_sound
+        self.sound_area.add(self.sound_button)
+
         self.ui_manager.add(arcade.gui.UIAnchorWidget(
             anchor_x="center",
             anchor_y='center',
@@ -1006,6 +1027,12 @@ class SettingView(arcade.View):
             anchor_y='center',
             align_y=-10,
             child=self.complete_area
+        ))
+        self.ui_manager.add(arcade.gui.UIAnchorWidget(
+            anchor_y='center',
+            anchor_x='center',
+            align_y=-70,
+            child=self.sound_area
         ))
 
     def on_show_view(self):
@@ -1047,6 +1074,13 @@ class SettingView(arcade.View):
                 "heal": True,
                 "shield": True
             }
+
+    def on_click_sound(self, _=None):
+        global PLAY_FIRE_SOUND
+        PLAY_FIRE_SOUND = not PLAY_FIRE_SOUND
+        self.sound_text.text = "关闭射击音效" if PLAY_FIRE_SOUND else "开启射击音效"
+        self.sound_text.fit_content()
+        self.sound_button.text = "Close" if PLAY_FIRE_SOUND else "Open"
 
     def on_update(self, delta_time: float):
         self.ui_manager.on_update(delta_time)
@@ -1278,9 +1312,9 @@ class GameView(arcade.View):
             for one_benefit in self.player.collides_with_list(self.game_scene["Benefit"]):
                 one_benefit: Benefit
                 if isinstance(one_benefit, UnlimitedBullet) and HINTS_STATUS['skill1']:
-                    self.clock.schedule_once(self.show_skill1_hints, 0.5)
+                    self.clock.schedule_once(self.show_skill1_hints, 0.1)
                 elif isinstance(one_benefit, ChaseFire) and HINTS_STATUS['skill2']:
-                    self.clock.schedule_once(self.show_skill2_hints, 0.5)
+                    self.clock.schedule_once(self.show_skill2_hints, 0.1)
                 elif isinstance(one_benefit, Healer) and HINTS_STATUS['heal']:
                     self.clock.schedule_once(self.show_heal_hints, 0.1)
                 elif isinstance(one_benefit, Shield) and HINTS_STATUS['shield']:
@@ -1344,15 +1378,19 @@ class GameView(arcade.View):
 
     def show_first_time_hints(self):
         """展示第一次进入游戏时的提示"""
-        words = ["欢迎来到游戏！\n看起来你第一次进入游戏，下面的教程将会帮你熟悉本游戏",
-                 "左侧矩形圈出的是你控制的飞机的心心。你的飞机一共有五颗心心\n"
-                 "，受到伤害就会减少一颗。失去所有心心后，游戏失败",
+        words = ["欢迎来到游戏！\n看起来你第一次进入游戏，\n下面的教程将会帮你熟悉本游戏",
+                 "左侧矩形圈出的是你控制的飞机的心心。\n"
+                 "你的飞机一共有五颗心心\n"
+                 "，受到伤害就会减少一颗。\n"
+                 "失去所有心心后，游戏失败",
+                 "通过WASD键控制飞机，按住空格或鼠标左键射击\n"
+                 "成功击败游戏最后出现的Boss后，游戏胜利",
                  "你可以通过点击左上方圈出的按钮返回主界面",
-                 "你可以通过点击右上角圈出的按钮暂停"]
+                 "你可以通过点击右上角圈出的按钮或E键暂停"]
         right_box = get_rect(self.game_v_box_right)
         pause_button_box = Rect(right_box.left, right_box.right, right_box.top,
                                 right_box.top - self.pause_button.height)
-        rects = [None, get_rect(self.health_bar.box),
+        rects = [None, get_rect(self.health_bar.box), None,
                  get_rect(self.game_v_box), pause_button_box]
         hint_view = HelpView(self, hints=words, rects=rects, show_keys=True,
                              callback=lambda: HINTS_STATUS.__setitem__("first_time", False))
@@ -1400,51 +1438,51 @@ class GameView(arcade.View):
                              callback=lambda: HINTS_STATUS.__setitem__("shield", False))
         self.window.show_view(hint_view)
 
-    def on_key_press(self, key, modifiers):
+    def on_key_press(self, symbol, modifiers):
         """Called whenever a key is pressed. """
 
-        if key == arcade.key.UP or key == arcade.key.W:
+        if symbol == arcade.key.UP or symbol == arcade.key.W:
             self.up_pressed = True
             self.update_player_speed()
-        elif key == arcade.key.DOWN or key == arcade.key.S:
+        elif symbol == arcade.key.DOWN or symbol == arcade.key.S:
             self.down_pressed = True
             self.update_player_speed()
-        elif key == arcade.key.LEFT or key == arcade.key.A:
+        elif symbol == arcade.key.LEFT or symbol == arcade.key.A:
             self.left_pressed = True
             self.update_player_speed()
-        elif key == arcade.key.RIGHT or key == arcade.key.D:
+        elif symbol == arcade.key.RIGHT or symbol == arcade.key.D:
             self.right_pressed = True
             self.update_player_speed()
 
-        if key == PAUSE_KEY:
+        if symbol == PAUSE_KEY:
             self.on_click_pause()
-        if key == FIRE_KEY:
+        if symbol == FIRE_KEY:
             self.firing = True
-        if key == FPS_KEY:
+        if symbol == FPS_KEY:
             self.fps_enable = not self.fps_enable
-        if key == SCORE_KEY:
+        if symbol == SCORE_KEY:
             self.score_enable = not self.score_enable
-        if key == arcade.key.KEY_1:
+        if symbol == arcade.key.KEY_1:
             self.player.unlimited_bullets(5)
-        if key == arcade.key.KEY_2:
+        if symbol == arcade.key.KEY_2:
             self.player.chase_bullets()
 
-    def on_key_release(self, key: object, modifiers):
+    def on_key_release(self, symbol: object, modifiers):
         """Called when the user releases a key. """
 
-        if key == arcade.key.UP or key == arcade.key.W:
+        if symbol == arcade.key.UP or symbol == arcade.key.W:
             self.up_pressed = False
             self.update_player_speed()
-        elif key == arcade.key.DOWN or key == arcade.key.S:
+        elif symbol == arcade.key.DOWN or symbol == arcade.key.S:
             self.down_pressed = False
             self.update_player_speed()
-        elif key == arcade.key.LEFT or key == arcade.key.A:
+        elif symbol == arcade.key.LEFT or symbol == arcade.key.A:
             self.left_pressed = False
             self.update_player_speed()
-        elif key == arcade.key.RIGHT or key == arcade.key.D:
+        elif symbol == arcade.key.RIGHT or symbol == arcade.key.D:
             self.right_pressed = False
             self.update_player_speed()
-        if key == FIRE_KEY:
+        if symbol == FIRE_KEY:
             self.firing = False
 
     def on_mouse_press(self, x: int, y: int, button: int, modifiers: int):
@@ -1614,6 +1652,8 @@ def main():
     finally:
         with open("hints.json", 'w') as file:
             json.dump(HINTS_STATUS, file, indent=4, ensure_ascii=False)
+        with open("setting.txt", 'w') as file:
+            file.write("1" if PLAY_FIRE_SOUND else "0")
 
 
 if __name__ == '__main__':
