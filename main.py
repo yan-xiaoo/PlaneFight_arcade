@@ -57,6 +57,9 @@ HEALTH_IMAGES = ["images/heart_empty.png", "images/heart.png"]
 CANCEL_IMAGE = "images/cancel.png"
 
 FIRE_SOUND = "sound/laser1.wav"
+BATTLE_SOUND = "sound/battle.ogg"
+MENU_SOUND = "sound/menu.ogg"
+BOSS_SOUND = "sound/boss.ogg"
 PLAY_FIRE_SOUND = True
 
 PLAYER_SPEED = 480  # 像素/秒
@@ -631,8 +634,10 @@ class Player(LivingSprite):
         self._health = 5
         self.damage = 1
 
-        self.invincible_effect = arcade.Sprite(texture=arcade.texture.make_soft_circle_texture(100, (95, 185, 240)))
+        self.invincible_effect = arcade.Sprite(texture=arcade.texture.make_soft_circle_texture(100, (95, 185, 240), outer_alpha=100))
         self.invincible_effect.visible = False
+        self.invincible_change_time = 0.15
+        self.invincible_total_change_time = 0.15
         self.game_view.game_scene.add_sprite("Player", self.invincible_effect)
 
         self.skills = {0: False, 1: False}
@@ -662,14 +667,20 @@ class Player(LivingSprite):
             self.right = SCREEN_WIDTH - 1
 
     def update_animation(self, delta_time: float = 1 / 60):
+        self.invincible_change_time -= delta_time
         if self.health == 1:
             self.cur_texture_index += 1
             self.cur_texture_index = self.cur_texture_index % 2
             self.set_texture(self.cur_texture_index)
-        if self.invincible > 0:
+        if self.invincible > 1:
             self.invincible_effect.visible = True
             self.invincible_effect.center_x = self.center_x
             self.invincible_effect.center_y = self.center_y
+        elif 1 >= self.invincible > 0 >= self.invincible_change_time:
+            self.invincible_effect.visible = not self.invincible_effect.visible
+            self.invincible_effect.center_x = self.center_x
+            self.invincible_effect.center_y = self.center_y
+            self.invincible_change_time = self.invincible_total_change_time
         else:
             self.invincible_effect.visible = False
 
@@ -800,6 +811,8 @@ class MenuView(arcade.View):
         super().__init__()
         # 以下为初始界面内容
         self.menu_scene = arcade.Scene()
+        self.menu_sound = arcade.Sound(MENU_SOUND, streaming=True)
+        self.sound_player = None
         self.menu_ui_manager = arcade.gui.UIManager()
         self.menu_v_box = arcade.gui.UIBoxLayout()
         main_text = arcade.gui.UITextArea(text="Plane War", height=70, width=390,
@@ -815,7 +828,7 @@ class MenuView(arcade.View):
                                                  width=200,
                                                  style={"font_name": "Kenney Future", "font_size": 20,
                                                         "bg_color": (56, 56, 56)})
-        setting_button.on_click = lambda event: self.window.show_view(SettingView())
+        setting_button.on_click = lambda event: self.window.show_view(SettingView(self))
         self.menu_v_box.add(setting_button.with_space_around(bottom=20))
         quit_button = arcade.gui.UIFlatButton(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 50, text="Quit",
                                               width=200,
@@ -836,9 +849,15 @@ class MenuView(arcade.View):
 
     def on_show_view(self):
         self.menu_ui_manager.enable()
+        if self.sound_player is None:
+            self.sound_player = self.menu_sound.play(loop=True)
+        if not self.sound_player.playing:
+            self.sound_player.play()
 
     def on_hide_view(self):
         self.menu_ui_manager.disable()
+        if self.sound_player is not None and self.sound_player.playing:
+            self.sound_player.pause()
 
 
 Rect = namedtuple("Rect", ['left', 'right', 'top', 'bottom'])
@@ -883,6 +902,16 @@ class HelpView(arcade.View):
         self.hint.text = self.hints[0]
         self.hint.fit_content()
         self.cursor = 0
+        try:
+            self.rects[self.cursor]
+        except IndexError:
+            self.rect_to_draw = None
+        else:
+            rect = self.rects[self.cursor]
+            if isinstance(rect, Rect):
+                self.rect_to_draw = rect
+            else:
+                self.rect_to_draw = None
         self.ui_manager.add(arcade.gui.UIAnchorWidget(
             anchor_x="right",
             align_y=-30,
@@ -969,8 +998,9 @@ class HelpView(arcade.View):
 
 
 class SettingView(arcade.View):
-    def __init__(self):
+    def __init__(self, menu_view: MenuView):
         super().__init__()
+        self.menu_view = menu_view
         self.ui_manager = arcade.gui.UIManager()
         self.exit_button = arcade.gui.UIFlatButton(text="Main Menu", width=200,
                                                    style={"font_name": "Kenney Future", "font_size": 20,
@@ -1040,13 +1070,14 @@ class SettingView(arcade.View):
 
     def on_show_view(self):
         self.ui_manager.enable()
+        if self.menu_view.sound_player is not None and not self.menu_view.sound_player.playing:
+            self.menu_view.sound_player.play()
 
     def on_hide_view(self):
         self.ui_manager.disable()
 
     def on_click_exit(self, _=None):
-        menu_view = MenuView()
-        self.window.show_view(menu_view)
+        self.window.show_view(self.menu_view)
 
     def on_click_complete(self, text=None):
         if text not in ["Ok", "Cancel"]:
@@ -1102,6 +1133,7 @@ class GameView(arcade.View):
         super().__init__()
         # 以下为游戏界面内容
         # 游戏中的GUI
+        self.sound_player = None
         self.showed = False
         self.boss_health = boss_health
         self.game_ui_manager = arcade.gui.UIManager()
@@ -1123,6 +1155,8 @@ class GameView(arcade.View):
         # 但加载音频会导致肉眼可见的卡顿
         # 因此这里以零音量播放一次，让其提前加载好
         self.fire_sound.play(volume=0)
+        self.battle_sound = arcade.Sound(BATTLE_SOUND, streaming=True)
+        self.boss_sound = arcade.Sound(BOSS_SOUND, streaming=True)
 
         self.game_v_box_right = arcade.gui.UIBoxLayout()
         self.pause_button = arcade.gui.UITextureButton(texture=arcade.load_texture("images/pause_square.png"))
@@ -1306,6 +1340,9 @@ class GameView(arcade.View):
                     align_x=50,
                     child=self.boss_health_bar
                 ))
+                self.sound_player.pause()
+                self.sound_player.delete()
+                self.sound_player = self.boss_sound.play(loop=True)
 
             # Boss战时才更新的内容：
             if self.boss_fight:
@@ -1381,42 +1418,45 @@ class GameView(arcade.View):
 
     def show_first_time_hints(self):
         """展示第一次进入游戏时的提示"""
-        words = ["欢迎来到游戏！\n看起来你第一次进入游戏，\n下面的教程将会帮你熟悉本游戏",
+        words = ["欢迎来到游戏！\n看起来你第一次进入游戏，\n下面的教程将会帮你熟悉本游戏\n",
                  "左侧矩形圈出的是你控制的飞机的心心。\n"
                  "你的飞机一共有五颗心心\n"
                  "，受到伤害就会减少一颗。\n"
-                 "失去所有心心后，游戏失败",
+                 "失去所有心心后，游戏失败\n",
                  "通过WASD键控制飞机，按住空格或鼠标左键射击\n"
-                 "成功击败游戏最后出现的Boss后，游戏胜利",
-                 "你可以通过点击左上方圈出的按钮返回主界面",
-                 "你可以通过点击右上角圈出的按钮或E键暂停"]
+                 "成功击败游戏最后出现的Boss后，游戏胜利\n",
+                 "你可以通过点击左上方圈出的按钮返回主界面\n",
+                 "你可以通过点击右上角圈出的按钮或E键暂停\n",
+                 "正式开始游戏前，请把输入法调整到英文状态\n"]
         right_box = get_rect(self.game_v_box_right)
         pause_button_box = Rect(right_box.left, right_box.right, right_box.top,
                                 right_box.top - self.pause_button.height)
         rects = [None, get_rect(self.health_bar.box), None,
-                 get_rect(self.game_v_box), pause_button_box]
+                 get_rect(self.game_v_box), pause_button_box, None]
         hint_view = HelpView(self, hints=words, rects=rects, show_keys=True,
                              callback=lambda: HINTS_STATUS.__setitem__("first_time", False))
         self.window.show_view(hint_view)
 
     def show_skill1_hints(self, _=None):
-        words = ["你刚刚捡起的是技能补给，能够使你的一技能完成充能。",
-                 "充能完成后，右侧圈起的技能图标会亮起，下方的按键也会不断闪烁\n"
-                 "此时按下“1”键即可激活技能",
+        words = ["你刚刚捡起的是技能补给，\n"
+                 "能够使你的一技能完成充能。\n",
+                 "充能完成后，右侧圈起的技能图标会亮起,\n"
+                 "下方的按键也会不断闪烁, 此时按下“1”键即可激活技能\n",
                  "该技能的效果为：在五秒内玩家的攻击间隔极大程度缩短，\n"
                  "并且子弹可以穿过敌人。\n"
-                 "同时，受到攻击时有50%概率不受伤害"]
+                 "同时，受到攻击时有50%概率不受伤害\n"]
         rects = [None, get_rect(self.player_skill1_image), None]
         hint_view = HelpView(self, hints=words, rects=rects, show_keys=True,
                              callback=lambda: HINTS_STATUS.__setitem__("skill1", False))
         self.window.show_view(hint_view)
 
     def show_skill2_hints(self, _=None):
-        words = ["你刚刚捡起的是技能补给，能够使你的二技能完成充能。",
+        words = ["你刚刚捡起的是技能补给，\n"
+                 "能够使你的二技能完成充能。\n",
                  "充能完成后，右侧圈起的技能图标会亮起，\n"
-                 "下方的按键也会不断闪烁。此时按下“2”键即可激活技能",
+                 "下方的按键也会不断闪烁。此时按下“2”键即可激活技能\n",
                  "该技能的效果为：持续锁定场上敌机，向它们发射追踪弹，\n"
-                 "技能持续直到有七名被锁定的敌人被击败"]
+                 "技能持续直到有七名被锁定的敌人被击败\n"]
         rects = [None, get_rect(self.player_skill2_image), None]
         hint_view = HelpView(self, hints=words, rects=rects, show_keys=True,
                              callback=lambda: HINTS_STATUS.__setitem__("skill2", False))
@@ -1424,20 +1464,21 @@ class GameView(arcade.View):
 
     def show_heal_hints(self, _=None):
         words = ["你刚刚捡起的是血量补给，可以为你恢复血量\n"
-                 "一个血量补给可以恢复三颗心心",
-                 "请注意，在心心已满时捡起血量补给不会有任何作用"]
+                 "一个血量补给可以恢复三颗心心\n"
+                 "血量可以在左侧框出的区域查看\n",
+                 "请注意，在心心已满时捡起血量补给不会有任何作用\n"]
         rects = [get_rect(self.health_bar.box), None]
-        hint_view = HelpView(self, hints=words, rects=rects, show_keys=False,
+        hint_view = HelpView(self, hints=words, rects=rects, show_keys=True,
                              callback=lambda: HINTS_STATUS.__setitem__("heal", False))
         self.window.show_view(hint_view)
 
     def show_shield_hints(self, _=None):
         words = ["你刚刚捡起的是无敌盾补给，可以为你提供无敌状态\n"
-                 "该补给可以使你在三秒内不受任何伤害",
-                 "无敌状态下，你的飞机周围会出现一圈淡蓝色光晕",
-                 "该补给的效果可以叠加"]
+                 "该补给可以使你在三秒内不受任何伤害\n",
+                 "无敌状态下，你的飞机周围会出现一圈淡蓝色光晕\n",
+                 "该补给的效果可以叠加\n"]
         rects = [None, get_rect(self.player), None]
-        hint_view = HelpView(self, hints=words, rects=rects, show_keys=False,
+        hint_view = HelpView(self, hints=words, rects=rects, show_keys=True,
                              callback=lambda: HINTS_STATUS.__setitem__("shield", False))
         self.window.show_view(hint_view)
 
@@ -1521,11 +1562,16 @@ class GameView(arcade.View):
 
         self.firing = False
 
+        if self.boss_fight:
+            self.sound_player = self.boss_sound.play(loop=True)
+        else:
+            self.sound_player = self.battle_sound.play(loop=True)
         if HINTS_STATUS['first_time']:
             self.show_first_time_hints()
 
     def on_hide_view(self):
         self.game_ui_manager.disable()
+        self.sound_player.pause()
 
     def on_click_pause(self, _=None):
         self.paused = not self.paused
@@ -1551,7 +1597,7 @@ class GameOverView(arcade.View):
         self.over_ui_manager = arcade.gui.UIManager()
         self.over_v_box = arcade.gui.UIBoxLayout()
         win = "Win!" if result else "Lose"
-        main_text = arcade.gui.UITextArea(text=f"You {win}", height=70, width=325,
+        main_text = arcade.gui.UITextArea(text=f"You {win}", height=70, width=350,
                                           font_name="Kenney Future", font_size=40)
         self.over_ui_manager.add(arcade.gui.UIAnchorWidget(
             anchor_x="center_x",
