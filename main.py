@@ -282,7 +282,7 @@ class LivingSprite(arcade.Sprite):
 
 class Boss(LivingSprite):
     def __init__(self, image, game_scene, scale=1, health=1, invincible=0.5, total_health=1, *args, **kwargs):
-        super().__init__(image, scale, health, invincible, total_health, *args, **kwargs)
+        super().__init__(image=image, scale=scale, health=health, invincible=invincible, total_health=total_health, *args, **kwargs)
         self.skill3_count = None
         self.skill2_count = None
         self._shot_count = None
@@ -290,7 +290,7 @@ class Boss(LivingSprite):
         self.game_view: GameView = game_scene
         self.damage = 1
 
-        self.skill_cd = [6, 10, 15, 0]
+        self.skill_cd = [6, 10, 15, 10]
         self.total_skill_cd = [16, 10, 15, 25]
         self.main_cd = 0
         self.main_cd_total = 6
@@ -801,11 +801,16 @@ class HelpView(arcade.View):
         self.hints = hints if hints is not None else ['']
         self.rects = rects if rects is not None else []
         if show_keys:
-            if 2 > len(self.hints) > 0:
-                self.hints[0] = self.hints[0] + "\n按下回车显示下一条\n按下ESC跳过教程"
-            elif len(self.hints) >= 2:
-                self.hints[0] = self.hints[0] + "\n按下回车显示下一条\n按下ESC跳过教程"
-                self.hints[1] = self.hints[1] + "\n按下Z键显示上一条\n按下回车显示下一条"
+            if 0 > len(self.hints) <= 1:
+                self.hints[0] = self.hints[0] + "\n按下ESC退出教程"
+            elif len(self.hints) == 2:
+                self.hints[0] = self.hints[0] + "\n按下回车显示下一条\n按下ESC退出教程"
+                self.hints[1] = self.hints[1] + "\n按下Z键显示上一条\n按下ESC退出教程"
+            elif len(self.hints) > 2:
+                self.hints[0] = self.hints[0] + "\n按下回车显示下一条\n按下ESC退出教程"
+                self.hints[-1] = self.hints[-1] + "\n按下Z键显示上一条\n按下ESC退出教程"
+                for i in range(1, len(self.hints)):
+                    self.hints[i] += "\n按下回车显示下一条\n按下Z键显示上一条"
         self.hint.text = self.hints[0]
         self.hint.fit_content()
         self.cursor = 0
@@ -892,12 +897,12 @@ class GameView(arcade.View):
     游戏的主程序
     """
 
-    def __init__(self):
+    def __init__(self, boss_fight=False, boss_health=1000):
         super().__init__()
         # 以下为游戏界面内容
         # 游戏中的GUI
         self.showed = False
-        self.boss_health = 1000
+        self.boss_health = boss_health
         self.game_ui_manager = arcade.gui.UIManager()
         self.game_v_box = arcade.gui.UIBoxLayout()
         exit_button = arcade.gui.UIFlatButton(0, 0, text="Main Menu",
@@ -992,26 +997,16 @@ class GameView(arcade.View):
         self.paused = False
         self.clock = pyglet.clock.Clock()
 
-        # 精灵
-        self.player = Player(self)
-
         # 控制方向所用的变量
-        self.up_pressed = None
-        self.down_pressed = None
-        self.left_pressed = None
-        self.right_pressed = None
+        self.up_pressed = False
+        self.down_pressed = False
+        self.left_pressed = False
+        self.right_pressed = False
 
-        self.firing = None
-        self.fps_enable = False
-        self.score = 0
-        self.score_enable = True
+        self.firing = False
 
-        self.boss_fight = False
-        self.boss = None
-        self.setup()
+        self.boss_fight = boss_fight
 
-    def setup(self):
-        # 创建场景
         self.game_scene = arcade.Scene()
         self.game_scene.add_sprite_list("Background")
         self.game_scene.add_sprite_list("Benefit")
@@ -1351,10 +1346,10 @@ class GameOverView(arcade.View):
         self.over_ui_manager.draw()
 
     def replay(self, _=None):
-        game_view = GameView()
         if self.game_scene.boss_fight and not self.result:
-            game_view.boss_fight = True
-            game_view.boss_health = min(self.game_scene.boss.health + 50, self.game_scene.boss_health)
+            game_view = GameView(boss_fight=True, boss_health=min(self.game_scene.boss.health + 50, self.game_scene.boss_health))
+        else:
+            game_view = GameView(boss_fight=False)
         self.window.show_view(game_view)
 
     def main_menu(self, _=None):
