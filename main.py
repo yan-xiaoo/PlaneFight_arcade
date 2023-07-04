@@ -964,11 +964,14 @@ class HelpView(arcade.View):
         self.ui_manager.enable()
         self.game_view.game_ui_manager.disable()
         self.game_view.paused = True
+        if self.game_view.sound_player is not None and not self.game_view.sound_player.playing:
+            self.game_view.sound_player.play()
 
     def on_hide_view(self):
         self.ui_manager.disable()
         self.game_view.game_ui_manager.enable()
         self.game_view.paused = False
+        self.game_view.sound_player.pause()
         if self.call_back is not None:
             self.call_back()
 
@@ -1562,10 +1565,13 @@ class GameView(arcade.View):
 
         self.firing = False
 
-        if self.boss_fight:
-            self.sound_player = self.boss_sound.play(loop=True)
+        if self.sound_player is not None and not self.sound_player.playing:
+            self.sound_player.play()
         else:
-            self.sound_player = self.battle_sound.play(loop=True)
+            if self.boss_fight:
+                self.sound_player = self.boss_sound.play(loop=True)
+            else:
+                self.sound_player = self.battle_sound.play(loop=True, volume=0.9)
         if HINTS_STATUS['first_time']:
             self.show_first_time_hints()
 
