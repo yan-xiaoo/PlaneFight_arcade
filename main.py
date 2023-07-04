@@ -8,10 +8,13 @@ import arcade.gui
 import pyglet.clock
 
 from configure import *
+import os
 
 NO = 'no'
 SIMPLE = 'simple'
 HARD = 'hard'
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 SCREEN_WIDTH = 1080
 SCREEN_HEIGHT = 750
