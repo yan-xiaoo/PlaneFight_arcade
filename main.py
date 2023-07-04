@@ -78,12 +78,53 @@ try:
 except (UnicodeError, FileNotFoundError):
     pass
 
+try:
+    with open("hints.json", 'r') as f:
+        HINTS_STATUS = json.load(f)
+except (UnicodeError, FileNotFoundError, json.JSONDecodeError):
+    HINTS_STATUS = {
+        "first_time": True,
+        "skill1": True,
+        "skill2": True,
+        "heal": True,
+        "shield": True
+    }
+
+try:
+    # noinspection PyStatementEffect
+    HINTS_STATUS['first_time']
+    # noinspection PyStatementEffect
+    HINTS_STATUS['skill1']
+    # noinspection PyStatementEffect
+    HINTS_STATUS['skill2']
+    # noinspection PyStatementEffect
+    HINTS_STATUS['heal']
+    # noinspection PyStatementEffect
+    HINTS_STATUS['shield']
+except KeyError:
+    print("Warning: 存储教程完成状态文件出现问题，已经重置该文件")
+    HINTS_STATUS = {
+        "first_time": True,
+        "skill1": True,
+        "skill2": True,
+        "heal": True,
+        "shield": True
+    }
+
 
 def get_difficulty(score: int):
     for i in SCORE_DIFFICULTY:
         if i[0] <= score < i[1]:
             return i[2]
     return 4
+
+
+def get_rect(self):
+    return Rect(left=self.left, right=self.right, top=self.top, bottom=self.bottom)
+
+
+# 把这个方法强行塞到arcade.Sprite里头，就变成这个类的方法了，之后继承arcade.Sprite的东西都有这个方法了
+arcade.Sprite.get_rect = get_rect
 
 
 class BackgroundObjects(arcade.Sprite):
@@ -282,7 +323,8 @@ class LivingSprite(arcade.Sprite):
 
 class Boss(LivingSprite):
     def __init__(self, image, game_scene, scale=1, health=1, invincible=0.5, total_health=1, *args, **kwargs):
-        super().__init__(image=image, scale=scale, health=health, invincible=invincible, total_health=total_health, *args, **kwargs)
+        super().__init__(image=image, scale=scale, health=health, invincible=invincible, total_health=total_health,
+                         *args, **kwargs)
         self.skill3_count = None
         self.skill2_count = None
         self._shot_count = None
@@ -753,13 +795,19 @@ class MenuView(arcade.View):
                                           font_name="Kenney Future", font_size=40)
         self.menu_v_box.add(main_text.with_space_around(bottom=50))
         start_button = arcade.gui.UIFlatButton(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 50, text="Start",
-                                               width=150,
+                                               width=200,
                                                style={"font_name": "Kenney Future", "font_size": 20,
                                                       "bg_color": (56, 56, 56)})
         start_button.on_click = lambda event: self.window.show_view(GameView())
         self.menu_v_box.add(start_button.with_space_around(bottom=20))
+        setting_button = arcade.gui.UIFlatButton(text="Setting",
+                                                 width=200,
+                                                 style={"font_name": "Kenney Future", "font_size": 20,
+                                                        "bg_color": (56, 56, 56)})
+        setting_button.on_click = lambda event: self.window.show_view(SettingView())
+        self.menu_v_box.add(setting_button.with_space_around(bottom=20))
         quit_button = arcade.gui.UIFlatButton(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 50, text="Quit",
-                                              width=150,
+                                              width=200,
                                               style={"font_name": "Kenney Future", "font_size": 20,
                                                      "bg_color": (56, 56, 56)})
         quit_button.on_click = lambda event: arcade.exit()
@@ -785,13 +833,22 @@ class MenuView(arcade.View):
 Rect = namedtuple("Rect", ['left', 'right', 'top', 'bottom'])
 
 
+def __add__(self, another):
+    return Rect(self.left + another.left, self.right + another.right, self.top + another.top,
+                self.bottom + another.bottom)
+
+
+Rect.__add__ = __add__
+
+
 class HelpView(arcade.View):
     """
     游戏内悬浮帮助的主要组件
     """
 
-    def __init__(self, game_view, hints=None, rects: list[Rect] = None, show_keys=False):
+    def __init__(self, game_view, hints=None, rects: list[Rect] = None, show_keys=False, callback=None):
         super().__init__()
+        self.rect_to_draw = None
         self.game_view: GameView = game_view
         self.ui_manager = arcade.gui.UIManager()
         self.exit_button = arcade.gui.UITextureButton(texture=arcade.load_texture(CANCEL_IMAGE))
@@ -800,16 +857,17 @@ class HelpView(arcade.View):
                                           multiline=True)
         self.hints = hints if hints is not None else ['']
         self.rects = rects if rects is not None else []
+        self.call_back = callback
         if show_keys:
             if 0 > len(self.hints) <= 1:
-                self.hints[0] = self.hints[0] + "\n按下ESC退出教程"
+                self.hints[0] = self.hints[0] + "\n这是最后一条，按下ESC退出教程"
             elif len(self.hints) == 2:
                 self.hints[0] = self.hints[0] + "\n按下回车显示下一条\n按下ESC退出教程"
-                self.hints[1] = self.hints[1] + "\n按下Z键显示上一条\n按下ESC退出教程"
+                self.hints[1] = self.hints[1] + "\n这是最后一条，按下Z键显示上一条\n按下ESC退出教程"
             elif len(self.hints) > 2:
                 self.hints[0] = self.hints[0] + "\n按下回车显示下一条\n按下ESC退出教程"
-                self.hints[-1] = self.hints[-1] + "\n按下Z键显示上一条\n按下ESC退出教程"
-                for i in range(1, len(self.hints)):
+                self.hints[-1] = self.hints[-1] + "\n这是最后一条，按下Z键显示上一条\n按下ESC退出教程"
+                for i in range(1, len(self.hints) - 1):
                     self.hints[i] += "\n按下回车显示下一条\n按下Z键显示上一条"
         self.hint.text = self.hints[0]
         self.hint.fit_content()
@@ -817,7 +875,7 @@ class HelpView(arcade.View):
         self.ui_manager.add(arcade.gui.UIAnchorWidget(
             anchor_x="right",
             align_y=-30,
-            align_x=-30,
+            align_x=-80,
             anchor_y='top',
             child=self.exit_button
         ))
@@ -836,11 +894,13 @@ class HelpView(arcade.View):
         try:
             self.rects[self.cursor]
         except IndexError:
-            pass
+            self.rect_to_draw = None
         else:
             rect = self.rects[self.cursor]
-            arcade.draw_lrtb_rectangle_outline(rect.left, rect.right, rect.top, rect.bottom,
-                                               color=(255, 255, 255), border_width=5)
+            if isinstance(rect, Rect):
+                self.rect_to_draw = rect
+            else:
+                self.rect_to_draw = None
 
     def last(self):
         self.cursor -= 1
@@ -852,11 +912,13 @@ class HelpView(arcade.View):
         try:
             self.rects[self.cursor]
         except IndexError:
-            pass
+            self.rect_to_draw = None
         else:
             rect = self.rects[self.cursor]
-            arcade.draw_lrtb_rectangle_outline(rect.left, rect.right, rect.top, rect.bottom,
-                                               color=(255, 255, 255), border_width=5)
+            if isinstance(rect, Rect):
+                self.rect_to_draw = rect
+            else:
+                self.rect_to_draw = None
 
     def on_show_view(self):
         self.ui_manager.enable()
@@ -867,6 +929,8 @@ class HelpView(arcade.View):
         self.ui_manager.disable()
         self.game_view.game_ui_manager.enable()
         self.game_view.paused = False
+        if self.call_back is not None:
+            self.call_back()
 
     def on_update(self, delta_time: float):
         self.game_view.update(delta_time)
@@ -876,6 +940,10 @@ class HelpView(arcade.View):
         self.clear()
         self.game_view.on_draw()
         self.ui_manager.draw()
+        if self.rect_to_draw is not None:
+            arcade.draw_lrtb_rectangle_outline(self.rect_to_draw.left, self.rect_to_draw.right, self.rect_to_draw.top,
+                                               self.rect_to_draw.bottom,
+                                               color=(255, 255, 255), border_width=5)
 
     def on_exit(self, _=None):
         self.window.show_view(self.game_view)
@@ -889,7 +957,103 @@ class HelpView(arcade.View):
             self.last()
 
 
-hints_status = {""}
+class SettingView(arcade.View):
+    def __init__(self):
+        super().__init__()
+        self.ui_manager = arcade.gui.UIManager()
+        self.exit_button = arcade.gui.UIFlatButton(text="Main Menu", width=200,
+                                                   style={"font_name": "Kenney Future", "font_size": 20,
+                                                          "bg_color": (56, 56, 56)})
+        self.exit_button.on_click = self.on_click_exit
+        self.ui_manager.add(arcade.gui.UIAnchorWidget(
+            anchor_y='top',
+            anchor_x='left',
+            align_x=30,
+            align_y=-30,
+            child=self.exit_button
+        ))
+
+        self.reset_area = arcade.gui.UIBoxLayout(vertical=False)
+        self.reset_text = arcade.gui.UITextArea(text="重置所有教程为未完成", font_name="华文黑体", font_size=20,
+                                                text_color=(255, 255, 255))
+        self.reset_text.fit_content()
+        self.reset_area.add(self.reset_text.with_space_around(right=30))
+        self.reset_button = arcade.gui.UIFlatButton(text="Reset", width=150,
+                                                    style={"font_name": "Kenney Future", "font_size": 20,
+                                                           "bg_color": (56, 56, 56)})
+        self.reset_button.on_click = self.on_click_reset
+        self.reset_area.add(self.reset_button)
+
+        self.complete_area = arcade.gui.UIBoxLayout(vertical=False)
+        self.complete_text = arcade.gui.UITextArea(text="标记所有教程为完成", font_name="华文黑体", font_size=20,
+                                                   text_color=(255, 255, 255))
+        self.complete_text.fit_content()
+        self.complete_area.add(self.complete_text.with_space_around(right=30))
+        self.complete_button = arcade.gui.UIFlatButton(text="Complete", width=200,
+                                                       style={"font_name": "Kenney Future", "font_size": 20,
+                                                              "bg_color": (56, 56, 56)})
+        self.complete_button.on_click = self.on_click_complete
+        self.complete_area.add(self.complete_button)
+
+        self.ui_manager.add(arcade.gui.UIAnchorWidget(
+            anchor_x="center",
+            anchor_y='center',
+            align_y=50,
+            child=self.reset_area
+        ))
+        self.ui_manager.add(arcade.gui.UIAnchorWidget(
+            anchor_x="center",
+            anchor_y='center',
+            align_y=-10,
+            child=self.complete_area
+        ))
+
+    def on_show_view(self):
+        self.ui_manager.enable()
+
+    def on_hide_view(self):
+        self.ui_manager.disable()
+
+    def on_click_exit(self, _=None):
+        menu_view = MenuView()
+        self.window.show_view(menu_view)
+
+    def on_click_complete(self, text=None):
+        if text not in ["Ok", "Cancel"]:
+            m = arcade.gui.UIMessageBox(width=300, height=150, message_text="Mark all tutorials as completed?", buttons=["Ok", "Cancel"],
+                                        callback=self.on_click_complete)
+            self.ui_manager.add(m)
+        elif text == 'Ok':
+            global HINTS_STATUS
+            HINTS_STATUS = {
+                "first_time": False,
+                "skill1": False,
+                "skill2": False,
+                "heal": False,
+                "shield": False
+            }
+
+    def on_click_reset(self, text=None):
+        if text not in ["Ok", "Cancel"]:
+            m = arcade.gui.UIMessageBox(width=300, height=150, message_text="Mark all tutorials as not read?", buttons=["Ok", "Cancel"],
+                                        callback=self.on_click_reset)
+            self.ui_manager.add(m)
+        elif text == 'Ok':
+            global HINTS_STATUS
+            HINTS_STATUS = {
+                "first_time": True,
+                "skill1": True,
+                "skill2": True,
+                "heal": True,
+                "shield": True
+            }
+
+    def on_update(self, delta_time: float):
+        self.ui_manager.on_update(delta_time)
+
+    def on_draw(self):
+        self.clear()
+        self.ui_manager.draw()
 
 
 class GameView(arcade.View):
@@ -905,13 +1069,13 @@ class GameView(arcade.View):
         self.boss_health = boss_health
         self.game_ui_manager = arcade.gui.UIManager()
         self.game_v_box = arcade.gui.UIBoxLayout()
-        exit_button = arcade.gui.UIFlatButton(0, 0, text="Main Menu",
-                                              width=200,
-                                              style={"font_name": "Kenney Future", "font_size": 20,
-                                                     "bg_color": (56, 56, 56)})
+        self.exit_button = arcade.gui.UIFlatButton(0, 0, text="Main Menu",
+                                                   width=200,
+                                                   style={"font_name": "Kenney Future", "font_size": 20,
+                                                          "bg_color": (56, 56, 56)})
         menu_view = MenuView()
-        exit_button.on_click = lambda event: self.window.show_view(menu_view)
-        self.game_v_box.add(exit_button.with_space_around(bottom=20))
+        self.exit_button.on_click = lambda event: self.window.show_view(menu_view)
+        self.game_v_box.add(self.exit_button.with_space_around(bottom=20))
         self.score_text = arcade.gui.UITextArea(text="Score: 0", height=30, width=300,
                                                 font_name="Kenney Future", font_size=20)
 
@@ -1110,14 +1274,17 @@ class GameView(arcade.View):
             if self.boss_fight:
                 self.boss_health_bar.text = f"Boss: {self.boss.health} / {self.boss.total_health}"
 
-            if 1 < self.score < 15 and not self.showed:
-                self.showed = True
-                help_scene = HelpView(self, hints=["欢迎来到游戏！", "这是第二页！"], show_keys=True)
-                self.window.show_view(help_scene)
-
             # 检查玩家是否获得增益
             for one_benefit in self.player.collides_with_list(self.game_scene["Benefit"]):
                 one_benefit: Benefit
+                if isinstance(one_benefit, UnlimitedBullet) and HINTS_STATUS['skill1']:
+                    self.clock.schedule_once(self.show_skill1_hints, 0.5)
+                elif isinstance(one_benefit, ChaseFire) and HINTS_STATUS['skill2']:
+                    self.clock.schedule_once(self.show_skill2_hints, 0.5)
+                elif isinstance(one_benefit, Healer) and HINTS_STATUS['heal']:
+                    self.clock.schedule_once(self.show_heal_hints, 0.1)
+                elif isinstance(one_benefit, Shield) and HINTS_STATUS['shield']:
+                    self.clock.schedule_once(self.show_shield_hints, 0.1)
                 one_benefit.on_touched(self.player)
 
             # 检查玩家子弹与敌人碰撞
@@ -1174,6 +1341,64 @@ class GameView(arcade.View):
         """
         over_view = GameOverView(win, self)
         self.window.show_view(over_view)
+
+    def show_first_time_hints(self):
+        """展示第一次进入游戏时的提示"""
+        words = ["欢迎来到游戏！\n看起来你第一次进入游戏，下面的教程将会帮你熟悉本游戏",
+                 "左侧矩形圈出的是你控制的飞机的心心。你的飞机一共有五颗心心\n"
+                 "，受到伤害就会减少一颗。失去所有心心后，游戏失败",
+                 "你可以通过点击左上方圈出的按钮返回主界面",
+                 "你可以通过点击右上角圈出的按钮暂停"]
+        right_box = get_rect(self.game_v_box_right)
+        pause_button_box = Rect(right_box.left, right_box.right, right_box.top,
+                                right_box.top - self.pause_button.height)
+        rects = [None, get_rect(self.health_bar.box),
+                 get_rect(self.game_v_box), pause_button_box]
+        hint_view = HelpView(self, hints=words, rects=rects, show_keys=True,
+                             callback=lambda: HINTS_STATUS.__setitem__("first_time", False))
+        self.window.show_view(hint_view)
+
+    def show_skill1_hints(self, _=None):
+        words = ["你刚刚捡起的是技能补给，能够使你的一技能完成充能。",
+                 "充能完成后，右侧圈起的技能图标会亮起，下方的按键也会不断闪烁\n"
+                 "此时按下“1”键即可激活技能",
+                 "该技能的效果为：在五秒内玩家的攻击间隔极大程度缩短，\n"
+                 "并且子弹可以穿过敌人。\n"
+                 "同时，受到攻击时有50%概率不受伤害"]
+        rects = [None, get_rect(self.player_skill1_image), None]
+        hint_view = HelpView(self, hints=words, rects=rects, show_keys=True,
+                             callback=lambda: HINTS_STATUS.__setitem__("skill1", False))
+        self.window.show_view(hint_view)
+
+    def show_skill2_hints(self, _=None):
+        words = ["你刚刚捡起的是技能补给，能够使你的二技能完成充能。",
+                 "充能完成后，右侧圈起的技能图标会亮起，\n"
+                 "下方的按键也会不断闪烁。此时按下“2”键即可激活技能",
+                 "该技能的效果为：持续锁定场上敌机，向它们发射追踪弹，\n"
+                 "技能持续直到有七名被锁定的敌人被击败"]
+        rects = [None, get_rect(self.player_skill2_image), None]
+        hint_view = HelpView(self, hints=words, rects=rects, show_keys=True,
+                             callback=lambda: HINTS_STATUS.__setitem__("skill2", False))
+        self.window.show_view(hint_view)
+
+    def show_heal_hints(self, _=None):
+        words = ["你刚刚捡起的是血量补给，可以为你恢复血量\n"
+                 "一个血量补给可以恢复三颗心心",
+                 "请注意，在心心已满时捡起血量补给不会有任何作用"]
+        rects = [get_rect(self.health_bar.box), None]
+        hint_view = HelpView(self, hints=words, rects=rects, show_keys=False,
+                             callback=lambda: HINTS_STATUS.__setitem__("heal", False))
+        self.window.show_view(hint_view)
+
+    def show_shield_hints(self, _=None):
+        words = ["你刚刚捡起的是无敌盾补给，可以为你提供无敌状态\n"
+                 "该补给可以使你在三秒内不受任何伤害",
+                 "无敌状态下，你的飞机周围会出现一圈淡蓝色光晕",
+                 "该补给的效果可以叠加"]
+        rects = [None, get_rect(self.player), None]
+        hint_view = HelpView(self, hints=words, rects=rects, show_keys=False,
+                             callback=lambda: HINTS_STATUS.__setitem__("shield", False))
+        self.window.show_view(hint_view)
 
     def on_key_press(self, key, modifiers):
         """Called whenever a key is pressed. """
@@ -1254,6 +1479,9 @@ class GameView(arcade.View):
         self.player.change_y = 0
 
         self.firing = False
+
+        if HINTS_STATUS['first_time']:
+            self.show_first_time_hints()
 
     def on_hide_view(self):
         self.game_ui_manager.disable()
@@ -1347,7 +1575,8 @@ class GameOverView(arcade.View):
 
     def replay(self, _=None):
         if self.game_scene.boss_fight and not self.result:
-            game_view = GameView(boss_fight=True, boss_health=min(self.game_scene.boss.health + 50, self.game_scene.boss_health))
+            game_view = GameView(boss_fight=True,
+                                 boss_health=min(self.game_scene.boss.health + 50, self.game_scene.boss_health))
         else:
             game_view = GameView(boss_fight=False)
         self.window.show_view(game_view)
@@ -1380,7 +1609,11 @@ def main():
     arcade.set_background_color((42, 45, 50))
     menu_view = MenuView()
     window.show_view(menu_view)
-    arcade.run()
+    try:
+        arcade.run()
+    finally:
+        with open("hints.json", 'w') as file:
+            json.dump(HINTS_STATUS, file, indent=4, ensure_ascii=False)
 
 
 if __name__ == '__main__':
