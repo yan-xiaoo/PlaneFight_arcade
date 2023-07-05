@@ -165,9 +165,10 @@ class BackgroundMusicPlayer:
             cls.instance.append(self)
         return cls.instance[0]
 
-    def play_bgm(self, source: arcade.sound.Sound):
+    def play_bgm(self, source: arcade.sound.Sound, volume=1.0):
         """
         播放背景音乐
+        :param volume: 播放音量，默认为1
         :param source: 音乐文件
         """
         if self.sound is not None:
@@ -176,7 +177,7 @@ class BackgroundMusicPlayer:
             self.music_player.pause()
             self.sound.stop(self.music_player)
         self.sound = source
-        self.music_player = source.play(volume=1, loop=True)
+        self.music_player = source.play(volume=volume, loop=True)
 
     def stop(self):
         self.sound.stop(self.music_player)
@@ -1437,7 +1438,7 @@ class GameView(arcade.View):
                 align_x=50,
                 child=self.boss_health_bar
             ))
-            self.sound_player.play_bgm(arcade.Sound(BOSS_SOUND, streaming=True))
+            self.sound_player.play_bgm(arcade.Sound(BOSS_SOUND, streaming=True), volume=0.7)
         else:
             self.sound_player.play_bgm(arcade.Sound(BATTLE_SOUND, streaming=True))
 
@@ -1520,7 +1521,7 @@ class GameView(arcade.View):
                     align_x=50,
                     child=self.boss_health_bar
                 ))
-                self.sound_player.play_bgm(arcade.Sound(BOSS_SOUND, streaming=True))
+                self.sound_player.play_bgm(arcade.Sound(BOSS_SOUND, streaming=True), volume=0.7)
 
             # Boss战时才更新的内容：
             if self.boss_fight:
