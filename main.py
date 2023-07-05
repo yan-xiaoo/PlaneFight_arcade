@@ -10,16 +10,20 @@ import pyglet.clock
 from configure import *
 import os
 
+# 定义追踪难度的常量
 NO = 'no'
 SIMPLE = 'simple'
 HARD = 'hard'
 
+# 为能兼容Pyinstaller而使用，在这里修改工作目录，这样arcade才能在打包好的东西中找到其需要的文件
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
+# 屏幕的宽，高，标题
 SCREEN_WIDTH = 1080
 SCREEN_HEIGHT = 750
 SCREEN_TITLE = "Plane War"
 
+# 定义背景速度与背景图片的路径
 BACKGROUND_SPEED = 480  # 像素/秒
 BACKGROUND_LISTS = ["images/meteorBrown_small2.png",
                     "images/meteorBrown_small2.png",
@@ -27,18 +31,22 @@ BACKGROUND_LISTS = ["images/meteorBrown_small2.png",
                     "images/meteorGrey_small2.png",
                     "images/background_star.png"]
 
+# 这是敌方子弹的图片
 BULLET = ["images/laser2.png", "images/laser3.png"]
 PLAYER = "images/player_ship.png"
 PLAYER_HURT = "images/player_hurt.png"
 PLAYER_HEAL = "images/player_heal.png"
 PLAYER_FIRE = 'images/fire01.png'
-PLAYER_BULLET = ["images/laser1.png"]
+# 我方子弹的图片
+PLAYER_BULLET = "images/laser1.png"
 ENEMY = ["images/enemy1.png", "images/enemy2.png",
          "images/enemy3.png", "images/enemy4.png"]
 
 BOSS = "images/boss.png"
+# 敌方导弹的图片
 MISSILE_ENEMY = "images/missile_enemy.png"
 
+# 爆炸特效是一张图片和这张图的水平/竖直翻转构成的
 EXPLODE = "images/explode.png"
 EXPLODE_LIST = [arcade.texture.load_texture(EXPLODE),
                 arcade.texture.load_texture(EXPLODE, flipped_vertically=True),
@@ -46,6 +54,7 @@ EXPLODE_LIST = [arcade.texture.load_texture(EXPLODE),
                 arcade.texture.load_texture(EXPLODE, flipped_horizontally=True,
                                             flipped_vertically=True)]
 
+# 增益所使用的图像
 HEAL = "images/heal.png"
 SHIELD = "images/shield.png"
 UNLIMITED_BULLET = ["images/player_skill1_false.png", "images/player_skill1_true.png",
@@ -60,18 +69,21 @@ FIRE_SOUND = "sound/laser1.wav"
 BATTLE_SOUND = "sound/battle.ogg"
 MENU_SOUND = "sound/menu.ogg"
 BOSS_SOUND = "sound/boss.ogg"
-PLAY_FIRE_SOUND = True
 
 PLAYER_SPEED = 480  # 像素/秒
 BULLET_SPEED = 300
 PLAYER_BULLET_SPEED = 500
 
+# 读取难度设置（即多少分对应什么样的敌人）
 with open("difficulty.json", 'r') as f:
     DIFFICULTY = json.load(f)
 
+# 定义分数与难度的对应关系
 SCORE_DIFFICULTY = [[0, 100, 0], [100, 150, 1], [150, 200, 2],
                     [200, 300, 3], [300, 400, 4]]
 
+# 读取过场提示
+# 就算过场提示不存在也不会报错，只是没有了而已
 LOADING_HINTS = []
 try:
     with open("loading_hints.txt", 'r', encoding='utf-8') as f:
@@ -85,6 +97,7 @@ try:
 except (UnicodeError, FileNotFoundError):
     pass
 
+# 读取教程完成状态。不存在教程状态文件的话，假设全部教程都未完成
 try:
     with open("hints.json", 'r') as f:
         HINTS_STATUS = json.load(f)
@@ -97,6 +110,7 @@ except (UnicodeError, FileNotFoundError, json.JSONDecodeError):
         "shield": True
     }
 
+# 检查教程字典中是否有所需的键，没有就判断该文件已经损坏，重置教程状态
 try:
     # noinspection PyStatementEffect
     HINTS_STATUS['first_time']
@@ -118,6 +132,7 @@ except KeyError:
         "shield": True
     }
 
+# 读取是否播放开火声音
 try:
     with open("setting.txt", 'r') as f:
         PLAY_FIRE_SOUND = bool(int(f.readline().strip()))
@@ -126,18 +141,24 @@ except (FileNotFoundError, UnicodeError, ValueError):
 
 
 def get_difficulty(score: int):
+    """
+    获取当前的得分对应什么难度
+    :param score: 得分
+    :return: 对应的难度，一个0～4的数字
+    """
     for i in SCORE_DIFFICULTY:
         if i[0] <= score < i[1]:
             return i[2]
     return 4
 
 
-def get_rect(self):
-    return Rect(left=self.left, right=self.right, top=self.top, bottom=self.bottom)
-
-
-# 把这个方法强行塞到arcade.Sprite里头，就变成这个类的方法了，之后继承arcade.Sprite的东西都有这个方法了
-arcade.Sprite.get_rect = get_rect
+def get_rect(obj):
+    """
+    获取一个有left, right, top, bottom对象的矩形
+    :param obj: 需要获取矩形的对象
+    :return: Rect对象
+    """
+    return Rect(left=obj.left, right=obj.right, top=obj.top, bottom=obj.bottom)
 
 
 class BackgroundObjects(arcade.Sprite):
@@ -146,7 +167,13 @@ class BackgroundObjects(arcade.Sprite):
     """
 
     def __init__(self, image, scale=1):
+        """
+        创建一个飞行的小物体
+        :param image: 物体的图片
+        :param scale: 物体的缩放大小
+        """
         super().__init__(image, scale)
+        # 背景物体初始y轴坐标在最上方，x轴坐标随机
         self.center_y = SCREEN_HEIGHT
         self.center_x = random.randint(0, SCREEN_WIDTH)
 
@@ -157,7 +184,20 @@ class BackgroundObjects(arcade.Sprite):
 
 
 class TextureButton(arcade.gui.UITextureButton):
+    """
+    一个可以定时切换图片的按钮，基于arcade里面的TextureButton
+    """
+
     def __init__(self, textures, cur_index=0, update_time=0.25, enable=False, *args, **kwargs):
+        """
+        创建一个可以定时切换图片的按钮
+        :param textures: 使用的材质（图片）列表
+        :param cur_index: 初始材质是什么
+        :param update_time: 切换材质的时间间隔
+        :param enable: 是否启用切换。也可以修改enabled属性来启用或禁用
+        :param args: 其他传递给arcade.gui.TextureButton的参数
+        :param kwargs: 其他传递给arcade.gui.TextureButton的参数
+        """
         super().__init__(texture=textures[cur_index], *args, **kwargs)
         self.many_textures = textures
         self.current_indexing = cur_index
@@ -166,7 +206,8 @@ class TextureButton(arcade.gui.UITextureButton):
 
     def on_update(self, dt):
         if not self.enabled:
-            self.texture = self.many_textures[1]
+            # 如果禁用了切换，就重置为第一张图片
+            self.texture = self.many_textures[0]
             return
         self.update_time -= dt
         if self.update_time <= 0:
@@ -177,10 +218,20 @@ class TextureButton(arcade.gui.UITextureButton):
 
 
 class HealthBar:
+    """
+    显示玩家血量的血条，游戏中左侧的那五个心心
+    """
+
     def __init__(self, health_images, game_scene):
+        """
+        创建一个血条对象。注意，创建完后需要手动把box属性加入UIManager中
+        :param health_images: 血条图标。第一个是空心，第二个是实心
+        :param game_scene: 游戏场景
+        """
         self.health_images = health_images
         game_scene: GameView
         self.game_scene = game_scene
+        # 使用一堆图片按钮来显示血量图片
         self.buttons = [arcade.gui.UITextureButton(texture=health_images[1]) for _ in range(5)]
         self.box = arcade.gui.UIBoxLayout(vertical=False)
         for one in self.buttons:
@@ -200,10 +251,18 @@ class Benefit(arcade.Sprite):
     """
 
     def __init__(self, image, scale=1.0, center=None, time=10):
+        """
+        创建一个增益，增益具有持续时间的限制，存在时间快到时会闪烁，  超过时间后会自动消失
+        :param image: 增益图片
+        :param scale: 增益的缩放大小
+        :param center: 增益中心的位置
+        :param time: 增益在屏幕上持续的时间
+        """
         super().__init__(image, scale)
         if center is not None:
             self.center_x = center[0]
             self.center_y = center[1]
+        # 添加一个和背景颜色一样的图片，通过图片切换实现“一闪一闪”的效果
         self.append_texture(arcade.make_soft_circle_texture(30, (42, 45, 50)))
 
         self.time = time
@@ -216,6 +275,7 @@ class Benefit(arcade.Sprite):
             self.kill()
 
     def update_animation(self, delta_time: float = 1 / 60):
+        # 在存在时间小于3秒，且闪烁cd到之后开始闪烁
         if self.time <= 3 and self.change_time <= 0:
             self.change_time = self.total_change_time
             self.cur_texture_index += 1
@@ -232,6 +292,10 @@ class Benefit(arcade.Sprite):
 
 
 class Healer(Benefit):
+    """
+    治疗增益，可以为玩家治疗3点血量
+    """
+
     def on_touched(self, player):
         player: Player
         player.health += 3
@@ -239,13 +303,22 @@ class Healer(Benefit):
 
 
 class Shield(Benefit):
+    """
+    无敌增益，为玩家提供3秒无敌时间
+    """
+
     def on_touched(self, player):
         player: Player
         player.invincible += 3
+        player.no_hurt = True
         self.kill()
 
 
 class UnlimitedBullet(Benefit):
+    """
+    技能增益，可以使玩家一技能“过载模式”完成充能
+    """
+
     def on_touched(self, player):
         player: Player
         player.skills[0] = True
@@ -253,12 +326,17 @@ class UnlimitedBullet(Benefit):
 
 
 class ChaseFire(Benefit):
+    """
+        技能增益，可以使玩家二技能“追踪弹”完成充能
+    """
+
     def on_touched(self, player):
         player: Player
         player.skills[1] = True
         self.kill()
 
 
+# 存储所有增益的字典，方便随机抽取增益。格式为：类对象：该增益的图标
 BENEFITS = {Healer: HEAL, Shield: SHIELD, UnlimitedBullet: UNLIMITED_BULLET[1], ChaseFire: CHASE_FIRE[1]}
 
 
@@ -267,9 +345,23 @@ class LivingSprite(arcade.Sprite):
     所有会拥有“生命”，会被有“攻击”的物体打死的物体的父类
     """
 
-    def __init__(self, image, scale=1, health=1, invincible=0.5, total_health=1, *args, **kwargs):
+    def __init__(self, image, scale=1, health=None, invincible=None, total_health=None, *args, **kwargs):
+        """
+        创建一个有生命的精灵。
+        由于游戏的伤害机制影响，一个东西的无敌时间内，假如其受到更高的伤害，则会转而受更高的伤害。
+        因此，存在一个属性no_hurt，可以使得一个东西在无敌时间内彻底不受伤害。
+        no_hurt = True时无敌时间内：不受任何伤害
+        no_hurt = False时无敌时间内：可能会受到更高的伤害。
+        因为一般情况下，我们需要无敌时的伤害替换机制，因此no_hurt默认为False，且只能手动设为True,无敌时间结束后还原为False
+        :param image: 图片
+        :param scale: 精灵的缩放
+        :param health: 目前的血量
+        :param invincible: 受攻击后的无敌时间长度
+        :param total_health: 总血量，影响被治疗时的治疗量（治疗无法使血量超过上限）
+        :param args: 其他给arcade.Sprite的参数
+        :param kwargs: 其他给arcade.Sprite的参数
+        """
         super().__init__(image, scale, *args, **kwargs)
-        self._extra_health = 0
         if health is None:
             self._health = 1
             self.total_health = 1
@@ -281,13 +373,15 @@ class LivingSprite(arcade.Sprite):
         else:
             self.total_invincible = invincible
         self.invincible = 0
-        self._max_damage = 1
+        self.no_hurt = False
+        self._max_damage = 0
 
     def on_update(self, delta_time: float = 1 / 60):
         if self.invincible > 0:
             self.invincible -= delta_time
         if self.invincible <= 0:
-            self._max_damage = 1
+            self._max_damage = 0
+            self.no_hurt = False
 
     def on_damaged(self, bullet):
         if self.invincible <= 0:
@@ -301,7 +395,7 @@ class LivingSprite(arcade.Sprite):
             self.invincible += self.total_invincible
             if self.health <= 0:
                 self.kill()
-        if hasattr(bullet, 'damage') and self.invincible > 0:
+        if hasattr(bullet, 'damage') and self.invincible > 0 and not self.no_hurt:
             if bullet.damage > self._max_damage:
                 self.health -= bullet.damage
                 self.health += self._max_damage
@@ -313,7 +407,8 @@ class LivingSprite(arcade.Sprite):
 
     @health.setter
     def health(self, new_health):
-        new_health = new_health if new_health < self._total_health else self._total_health
+        # 控制血量不超过上限
+        new_health = new_health if new_health < self.total_health else self.total_health
         self.on_health_change(new_health - self.health)
         self._health = new_health
 
@@ -325,36 +420,38 @@ class LivingSprite(arcade.Sprite):
         """
         pass
 
-    @property
-    def total_health(self):
-        return self._total_health
-
-    @total_health.setter
-    def total_health(self, value):
-        self._total_health = value
-
 
 class Boss(LivingSprite):
-    def __init__(self, image, game_scene, scale=1, health=1, invincible=0.5, total_health=1, *args, **kwargs):
+    def __init__(self, image, game_scene, scale=1, health=1000, invincible=0.1, total_health=1000, *args, **kwargs):
         super().__init__(image=image, scale=scale, health=health, invincible=invincible, total_health=total_health,
                          *args, **kwargs)
-        self.skill3_count = None
-        self.skill2_count = None
-        self._shot_count = None
         self.towards = 1
         self.game_view: GameView = game_scene
+        # 决定Boss撞到玩家时会造成多少伤害
         self.damage = 1
 
+        # Boss技能初始cd
         self.skill_cd = [6, 10, 15, 10]
+        # Boss技能除了第一次外，之后每一次释放的cd
         self.total_skill_cd = [16, 10, 15, 25]
+        # 技能公用cd，防止出现Boss一堆技能一起放的情况出现
         self.main_cd = 0
         self.main_cd_total = 6
+        # Boss巡航（左右移动）的边界
+        # 在召唤出小飞机之后，Boss巡航边界会变小一点点
         self.right_range = SCREEN_WIDTH
         self.left_range = 0
+        # Boss所有的技能，释放时会用random.choice()随机选择一个
         self.skills = [self.shot, self.chase_shot, self.many_bullets, self.additional_planes]
+
+        # 用于计算Boss技能效果并控制技能结束的变量
+        self._skill1_count = None
+        self._skill2_count = None
+        self._skill3_count = None
 
     def on_update(self, delta_time: float = 1 / 60):
         super().on_update(delta_time)
+        # 移动Boss
         self.center_x += random.randint(0, 200) * delta_time * self.towards
         if self.center_x + self.width / 2 > self.right_range:
             self.center_x = self.right_range - self.width / 2
@@ -363,14 +460,17 @@ class Boss(LivingSprite):
             self.center_x = self.left_range + self.width / 2
             self.towards = -self.towards
 
+        # 减小技能cd
         for one in range(len(self.skill_cd)):
             self.skill_cd[one] -= delta_time
         self.main_cd -= delta_time
 
+        # 尝试释放技能
         self.skill()
 
     def skill(self):
         skill_available = [self.skills[i] for i in range(len(self.skills)) if self.skill_cd[i] <= 0]
+        # 满足两个条件：技能cd为0，主cd为0时每帧有10%概率释放
         if random.random() < 0.1 and len(skill_available) > 0 >= self.main_cd:
             self.main_cd = self.main_cd_total
             skill = random.choice(skill_available)
@@ -379,6 +479,10 @@ class Boss(LivingSprite):
             skill()
 
     def drop_benefit(self):
+        """
+        随机掉落一种补给，位置在屏幕中心的（300， 250）区域内
+        :return:
+        """
         benefit = random.choice(list(BENEFITS.keys()))
         b = benefit(BENEFITS[benefit], center=(random.randint(int(SCREEN_WIDTH / 2 - 150), int(SCREEN_WIDTH / 2 + 150)),
                                                random.randint(int(SCREEN_HEIGHT / 2 - 150),
@@ -391,38 +495,53 @@ class Boss(LivingSprite):
         for one in range(self.health, self.health + abs(delta_health)):
             if one % 50 == 0:
                 benefit = True
+        # 每被打掉50点血量就掉一个补给
+        # 没想到吧，你的补给是Boss掉的（
         if benefit:
             self.drop_benefit()
 
     def shot(self):
+        """
+        一技能：Boss持续发射8发子弹，间隔0.75秒，子弹竖直向下移动
+        :return:
+        """
         self.game_view.clock.schedule_interval_soft(self._shot, 0.75)
-        self._shot_count = 0
+        self._skill1_count = 0
 
     def _shot(self, _=None):
         bullet = Bullet((self.center_x, self.bottom), BULLET[1], chase=NO, speed=250)
         self.game_view.game_scene.add_sprite("EnemyBullet", bullet)
-        self._shot_count += 1
-        if self._shot_count >= 8:
+        self._skill1_count += 1
+        if self._skill1_count >= 8:
             self.game_view.clock.unschedule(self._shot)
 
     def chase_shot(self):
-        self.skill2_count = 0
+        """
+        二技能：1.5秒内，Boss每隔0.5秒发射一发追踪弹，一共发射3发，强追踪1.5秒
+        :return:
+        """
+        self._skill2_count = 0
         self.game_view.clock.schedule_interval_soft(self._chase_shot, 0.5)
 
     def _chase_shot(self, _=None):
-        self.skill2_count += 1
+        self._skill2_count += 1
         bullet = Bullet((self.center_x, self.bottom), MISSILE_ENEMY, chase=HARD, speed=250, chase_time=1.5,
                         player=self.game_view.player)
         self.game_view.game_scene.add_sprite("EnemyBullet", bullet)
-        if self.skill2_count >= 3:
+        if self._skill2_count >= 3:
             self.game_view.clock.unschedule(self._chase_shot)
 
     def many_bullets(self):
-        self.skill3_count = 0
+        """
+        三技能：无尽火力，Boss持续发射子弹，每0.1秒发射三发，持续1秒，一共发射30发
+        子弹在发射时锁定玩家位置，并持续沿着该方向移动
+        :return:
+        """
+        self._skill3_count = 0
         self.game_view.clock.schedule_interval_soft(self._many_bullets, 0.1)
 
     def _many_bullets(self, _=None):
-        self.skill3_count += 1
+        self._skill3_count += 1
         bullet1 = Bullet((self.center_x, self.bottom), BULLET[1], chase=SIMPLE, speed=350, player=self.game_view.player)
         bullet2 = Bullet((self.center_x - 30, self.bottom), BULLET[1], chase=SIMPLE, speed=350,
                          player=self.game_view.player)
@@ -432,24 +551,31 @@ class Boss(LivingSprite):
         self.game_view.game_scene.add_sprite("EnemyBullet", bullet2)
         self.game_view.game_scene.add_sprite("EnemyBullet", bullet3)
 
-        if self.skill3_count >= 10:
+        if self._skill3_count >= 10:
             self.game_view.clock.unschedule(self._many_bullets)
 
     def additional_planes(self):
+        """
+        四技能：召唤两架小飞机协同攻击。小飞机存在15秒后自动消失，有四点血，可以被击败（且被打败时必掉落补给）每隔1.5秒发射一发弱追踪子弹
+        :return:
+        """
+        # 自然掉落概率设为0（因为小飞机重写了self.kill，在重写的方法中检测到自己被玩家打败而不是自然消失时时会掉落补给）
         plane_a = SpecialPlane(image=ENEMY[0], scale=1, game_view=self.game_view, fire=True, chase=SIMPLE,
-                               center_y=self.center_y, health=4, invincible=0)
+                               center_y=self.center_y, health=4, invincible=0, benefit_chance=0)
         plane_b = SpecialPlane(image=ENEMY[0], scale=1, game_view=self.game_view, fire=True, chase=SIMPLE,
-                               center_y=self.center_y, health=4, invincible=0)
+                               center_y=self.center_y, health=4, invincible=0, benefit_chance=0)
         plane_a.center_x = 70
         plane_a.total_fire_cd = plane_b.total_fire_cd = 1.5
         plane_b.center_x = SCREEN_WIDTH - 70
 
+        # 改变自己的左右巡航范围，防止撞到跑去捡补给品的玩家
         self.left_range = 110
         self.right_range = SCREEN_WIDTH - 110
 
         self.game_view.game_scene.add_sprite("Enemy", plane_a)
         self.game_view.game_scene.add_sprite("Enemy", plane_b)
 
+        # 15秒后把巡航范围改回来
         self.game_view.clock.schedule_once(lambda event: setattr(self, "left_range", 0), 15)
         self.game_view.clock.schedule_once(lambda event: setattr(self, "right_range", SCREEN_WIDTH), 15)
 
@@ -457,10 +583,10 @@ class Boss(LivingSprite):
 class Enemy(LivingSprite):
     def __init__(self, image, game_view, scale: int = 1, speed: float = 180, fire: bool = False,
                  fire_cd: float = 1, chase: str = NO, center_x=None, center_y=None, health=None, damage=None,
-                 invincible=0.5,
+                 invincible=0.5, benefit_chance=0.15,
                  *args, **kwargs):
         """
-        创建一架敌机
+        创建一架敌机。一般的飞机会在顶部产生，竖直向下飞行
         :param image: 用于创建飞机的图片
         :param game_view: 游戏的View页面，用来获取player的位置
         :param scale: 图片缩放的尺寸
@@ -473,6 +599,7 @@ class Enemy(LivingSprite):
         :param health: 飞机的生命值，默认为1
         :param damage: 飞机在与玩家碰撞时造成的伤害，默认为1
         :param invincible: 飞机受伤后的无敌时间，默认为0.5s
+        :param benefit_chance: 飞机死亡后掉落补给的概率，一个小数，默认为0.15（15%）
         """
         super().__init__(image, scale, health=health, invincible=invincible, *args, **kwargs)
         self.change_y = -speed
@@ -497,19 +624,25 @@ class Enemy(LivingSprite):
         self.bullets = []
         self.total_health = self.health = health if health is not None else 1
         self.damage = damage if damage is not None else 1
+        self.benefit_chance = benefit_chance
 
     def on_update(self, delta_time: float = 1 / 60):
         super().on_update(delta_time)
         self.center_y += self.change_y * delta_time
         self.fire_cd -= delta_time
         self.fire()
-        if self.top < 0 or self.bottom > SCREEN_HEIGHT or self.left < 0 or self.right > SCREEN_WIDTH:
+        # 因为飞机初始会在屏幕上面一点，所以不检测飞上去的情况
+        if self.top < 0 or self.left < 0 or self.right > SCREEN_WIDTH:
             self.kill()
 
     def kill(self):
+        """
+        飞机被打败时执行的操作：清除自己发射过的子弹；有一定概率掉落补给
+        :return:
+        """
         for one_bullet in self.bullets:
             one_bullet.kill()
-        if random.random() < 0.15:
+        if random.random() < self.benefit_chance:
             benefit = random.choice(list(BENEFITS.keys()))
             self.game_view.game_scene.add_sprite("Benefit",
                                                  benefit(image=BENEFITS[benefit], scale=2,
@@ -527,9 +660,13 @@ class Enemy(LivingSprite):
 
 
 class SpecialPlane(Enemy):
+    """
+    Boss召唤出的小飞机，因为其不会移动，会自己消失所以重写了Enemy
+    """
     def __init__(self, image, scale=1, life_time=15, *args, **kwargs):
         super().__init__(image=image, scale=scale, *args, **kwargs)
         self.life = life_time
+        # 把速度设为0，就不会移动了
         self.change_y = 0
 
     def on_update(self, delta_time: float = 1 / 60):
@@ -539,6 +676,7 @@ class SpecialPlane(Enemy):
             self.kill()
 
     def kill(self):
+        # 检查自己是否是被击败而不是自然消失
         if self.life > 0:
             benefit = random.choice(list(BENEFITS.keys()))
             self.game_view.game_scene.add_sprite("Benefit",
@@ -551,9 +689,13 @@ class Bullet(arcade.Sprite):
     def __init__(self, center, image=None, chase=NO, player=None, damage=1, chase_time=1.0, speed=BULLET_SPEED):
         """
         创建一颗子弹
+        :param center: 子弹的中心位置
+        :param image: 子弹的图片，可以不指定，默认为随机的子弹图片
         :param chase: 子弹是否追踪
         :param player: 玩家位置，用在追踪时计算
         :param damage: 该子弹命中时造成的伤害
+        :param chase_time: 子弹追踪的时间长度，在chase=HARD时才有用
+        :param speed: 子弹的速度
         """
         if image is None:
             super().__init__(random.choice(BULLET))
@@ -581,8 +723,6 @@ class Bullet(arcade.Sprite):
 
     def on_update(self, delta_time=None):
         self.chase_time -= delta_time
-        if self.player is not None and self.player.health <= 0:
-            self.kill()
         if self.chase == HARD and self.chase_time > 0:
             x_diff = self.player.center_x - self.center_x
             y_diff = self.player.center_y - self.center_y
@@ -590,7 +730,7 @@ class Bullet(arcade.Sprite):
             self.angle = math.degrees(angle) - 90
             self.change_y = math.sin(angle) * self.speed
             self.change_x = math.cos(angle) * self.speed
-        if self.center_x > SCREEN_WIDTH or self.center_x < 0 or self.center_y > SCREEN_HEIGHT or self.center_y < 0:
+        if self.left > SCREEN_WIDTH or self.right < 0 or self.bottom > SCREEN_HEIGHT or self.top < 0:
             self.kill()
 
         self.center_y += self.change_y * delta_time
@@ -601,14 +741,12 @@ class PlayerBullet(arcade.Sprite):
     def __init__(self, images, go_through=False):
         super().__init__(images)
         self.through = go_through
+        self.damage = 1
 
     def on_update(self, delta_time: float = 1 / 60):
         self.center_y += delta_time * PLAYER_BULLET_SPEED
         if self.top > SCREEN_HEIGHT:
             self.kill()
-
-
-PlayerBullet.damage = 1
 
 
 class Player(LivingSprite):
@@ -618,14 +756,13 @@ class Player(LivingSprite):
 
     def __init__(self, game_view, image=None, scale=1.0, fire_cd=0.25):
         super().__init__(image, scale, health=5, total_health=5, invincible=0.5)
-        self._enemy = []
-        self._enemy_killed = 0
         self.bullet_through = False
         self.fire_cd = self.total_fire_cd = fire_cd
         self.game_view: GameView = game_view
         self.append_texture(arcade.load_texture(PLAYER_HURT))
         self.append_texture(arcade.load_texture(PLAYER_HEAL))
 
+        # 飞机背后那个尾焰，只在飞机移动时出现
         self.fire_sprite = arcade.Sprite(PLAYER_FIRE, 0.5)
         self.fire_sprite.center_x = self.center_x
         self.fire_sprite.center_y = self.center_y
@@ -634,13 +771,19 @@ class Player(LivingSprite):
         self._health = 5
         self.damage = 1
 
-        self.invincible_effect = arcade.Sprite(texture=arcade.texture.make_soft_circle_texture(100, (95, 185, 240), outer_alpha=100))
+        self.invincible_effect = arcade.Sprite()
+        self.invincible_effect.append_texture(arcade.texture.make_soft_circle_texture(100, (95, 185, 240), outer_alpha=100))
+        self.invincible_effect.append_texture(arcade.texture.make_soft_circle_texture(100, (95, 185, 240)))
         self.invincible_effect.visible = False
-        self.invincible_change_time = 0.15
-        self.invincible_total_change_time = 0.15
+        print(self.invincible_effect.textures)
         self.game_view.game_scene.add_sprite("Player", self.invincible_effect)
 
+        # 存储玩家的技能是否可以使用
         self.skills = {0: False, 1: False}
+
+        # 玩家技能所需要的记录变量
+        self._enemy = []
+        self._enemy_killed = 0
 
     def on_update(self, delta_time=None):
         super().on_update(delta_time)
@@ -651,7 +794,6 @@ class Player(LivingSprite):
         if self.change_y == self.change_x == 0:
             self.fire_sprite.visible = False
         else:
-            self.fire_sprite.visible = True
             self.fire_sprite.visible = True
         self.fire_sprite.center_x = self.center_x
         self.fire_sprite.top = self.bottom
@@ -667,27 +809,30 @@ class Player(LivingSprite):
             self.right = SCREEN_WIDTH - 1
 
     def update_animation(self, delta_time: float = 1 / 60):
-        self.invincible_change_time -= delta_time
+        # 只剩一点血时，在红蓝色间闪烁
         if self.health == 1:
             self.cur_texture_index += 1
             self.cur_texture_index = self.cur_texture_index % 2
             self.set_texture(self.cur_texture_index)
+        # 无敌时间剩余较长的无敌特效
         if self.invincible > 1:
+            self.invincible_effect.set_texture(0)
             self.invincible_effect.visible = True
             self.invincible_effect.center_x = self.center_x
             self.invincible_effect.center_y = self.center_y
-        elif 1 >= self.invincible > 0 >= self.invincible_change_time:
-            self.invincible_effect.visible = not self.invincible_effect.visible
+        # 无敌时间剩余1秒内的无敌特效，更淡了一些
+        elif 1 >= self.invincible > 0:
+            self.invincible_effect.set_texture(1)
+            self.invincible_effect.visible = True
             self.invincible_effect.center_x = self.center_x
             self.invincible_effect.center_y = self.center_y
-            self.invincible_change_time = self.invincible_total_change_time
         else:
             self.invincible_effect.visible = False
 
     def fire(self):
         if self.fire_cd <= 0 < self.health:
             self.fire_cd = self.total_fire_cd
-            player_bullet = PlayerBullet(random.choice(PLAYER_BULLET), self.bullet_through)
+            player_bullet = PlayerBullet(PLAYER_BULLET, self.bullet_through)
             player_bullet.center_x = self.center_x
             player_bullet.center_y = self.top
             self.game_view.game_scene.add_sprite("PlayerBullet", player_bullet)
@@ -697,8 +842,10 @@ class Player(LivingSprite):
     def kill(self):
         super().kill()
         self.fire_sprite.kill()
+        self.invincible_effect.kill()
 
     def on_health_change(self, delta_health):
+        # 被伤害或治疗后的0.5秒内切换自己的图片
         if delta_health < 0:
             self.set_texture(1)
         elif delta_health > 0:
@@ -761,7 +908,7 @@ class Player(LivingSprite):
                 self._enemy_killed += 1
                 self._enemy.remove(one)
 
-        if self._enemy_killed >= 10:
+        if self._enemy_killed >= 10 or self.game_view.boss_fight:
             self._enemy.clear()
             self.game_view.clock.unschedule(self._chase_bullets)
 
@@ -890,13 +1037,13 @@ class HelpView(arcade.View):
         self.call_back = callback
         if show_keys:
             if 0 > len(self.hints) <= 1:
-                self.hints[0] = self.hints[0] + "\n这是最后一条，按下ESC退出教程"
+                self.hints[0] = self.hints[0] + "\n这是最后一条，继续按下回车退出教程"
             elif len(self.hints) == 2:
                 self.hints[0] = self.hints[0] + "\n按下回车显示下一条\n按下ESC退出教程"
-                self.hints[1] = self.hints[1] + "\n这是最后一条，按下Z键显示上一条\n按下ESC退出教程"
+                self.hints[1] = self.hints[1] + "\n这是最后一条，按下Z键显示上一条\n按下回车退出教程"
             elif len(self.hints) > 2:
                 self.hints[0] = self.hints[0] + "\n按下回车显示下一条\n按下ESC退出教程"
-                self.hints[-1] = self.hints[-1] + "\n这是最后一条，按下Z键显示上一条\n按下ESC退出教程"
+                self.hints[-1] = self.hints[-1] + "\n这是最后一条，按下Z键显示上一条\n按下回车退出教程"
                 for i in range(1, len(self.hints) - 1):
                     self.hints[i] += "\n按下回车显示下一条\n按下Z键显示上一条"
         self.hint.text = self.hints[0]
@@ -928,7 +1075,8 @@ class HelpView(arcade.View):
     def next(self):
         self.cursor += 1
         if self.cursor >= len(self.hints):
-            self.cursor = len(self.hints) - 1
+            self.on_exit()
+            return
         self.hint.text = self.hints[self.cursor]
         self.hint.fit_content()
         try:
@@ -1084,7 +1232,8 @@ class SettingView(arcade.View):
 
     def on_click_complete(self, text=None):
         if text not in ["Ok", "Cancel"]:
-            m = arcade.gui.UIMessageBox(width=300, height=150, message_text="Mark all tutorials as completed?", buttons=["Ok", "Cancel"],
+            m = arcade.gui.UIMessageBox(width=300, height=150, message_text="Mark all tutorials as completed?",
+                                        buttons=["Ok", "Cancel"],
                                         callback=self.on_click_complete)
             self.ui_manager.add(m)
         elif text == 'Ok':
@@ -1099,7 +1248,8 @@ class SettingView(arcade.View):
 
     def on_click_reset(self, text=None):
         if text not in ["Ok", "Cancel"]:
-            m = arcade.gui.UIMessageBox(width=300, height=150, message_text="Mark all tutorials as not read?", buttons=["Ok", "Cancel"],
+            m = arcade.gui.UIMessageBox(width=300, height=150, message_text="Mark all tutorials as not read?",
+                                        buttons=["Ok", "Cancel"],
                                         callback=self.on_click_reset)
             self.ui_manager.add(m)
         elif text == 'Ok':
@@ -1644,7 +1794,7 @@ class GameOverView(arcade.View):
             child=self.over_v_box
         ))
 
-        hint_text = arcade.gui.UITextArea(font_name="华文黑体", font_size=15)
+        hint_text = arcade.gui.UITextArea(font_name="华文黑体", font_size=25)
         self.over_ui_manager.add(arcade.gui.UIAnchorWidget(
             anchor_x="right",
             anchor_y="bottom",
@@ -1653,7 +1803,7 @@ class GameOverView(arcade.View):
             child=hint_text
         ))
         if LOADING_HINTS:
-            hint_text.text = "按Enter显示下一条"
+            hint_text.text = "按回车显示下一条提示"
             hint_text.fit_content()
 
     def on_hide_view(self):
