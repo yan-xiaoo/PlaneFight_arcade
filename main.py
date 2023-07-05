@@ -6,6 +6,7 @@ from collections import namedtuple
 import arcade
 import arcade.gui
 import pyglet.clock
+import pyglet.media
 
 from configure import *
 import os
@@ -69,6 +70,9 @@ FIRE_SOUND = "sound/laser1.wav"
 BATTLE_SOUND = "sound/battle.ogg"
 MENU_SOUND = "sound/menu.ogg"
 BOSS_SOUND = "sound/boss.ogg"
+
+WIN_SOUND = "sound/win.mp3"
+LOSE_SOUND = "sound/lose.mp3"
 
 PLAYER_SPEED = 480  # 像素/秒
 BULLET_SPEED = 300
@@ -145,6 +149,37 @@ def get_rect(obj):
     :return: Rect对象
     """
     return Rect(left=obj.left, right=obj.right, top=obj.top, bottom=obj.bottom)
+
+
+class BackgroundMusicPlayer:
+    """
+    背景音乐播放器，用于播放背景音乐
+    """
+    instance = []
+
+    def __new__(cls):
+        if not cls.instance:
+            self = super().__new__(cls)
+            self.music_player = None
+            self.sound = None
+            cls.instance.append(self)
+        return cls.instance[0]
+
+    def play_bgm(self, source: arcade.sound.Sound):
+        """
+        播放背景音乐
+        :param source: 音乐文件
+        """
+        if self.sound is not None:
+            if self.sound.file_name == source.file_name and self.sound.is_playing(self.music_player):
+                return
+            self.music_player.pause()
+            self.sound.stop(self.music_player)
+        self.sound = source
+        self.music_player = source.play(volume=1, loop=True)
+
+    def stop(self):
+        self.sound.stop(self.music_player)
 
 
 class BackgroundObjects(arcade.Sprite):
@@ -949,8 +984,7 @@ class MenuView(arcade.View):
         super().__init__()
         # 以下为初始界面内容
         self.menu_scene = arcade.Scene()
-        self.menu_sound = arcade.Sound(MENU_SOUND, streaming=True)
-        self.sound_player = None
+        self.sound_player = BackgroundMusicPlayer()
         self.menu_ui_manager = arcade.gui.UIManager()
         self.menu_v_box = arcade.gui.UIBoxLayout()
         main_text = arcade.gui.UITextArea(text="Plane War", height=70, width=390,
@@ -987,15 +1021,10 @@ class MenuView(arcade.View):
 
     def on_show_view(self):
         self.menu_ui_manager.enable()
-        if self.sound_player is None:
-            self.sound_player = self.menu_sound.play(loop=True)
-        if not self.sound_player.playing:
-            self.sound_player.play()
+        self.sound_player.play_bgm(arcade.Sound(MENU_SOUND, streaming=True))
 
     def on_hide_view(self):
         self.menu_ui_manager.disable()
-        if self.sound_player is not None and self.sound_player.playing:
-            self.sound_player.pause()
 
 
 Rect = namedtuple("Rect", ['left', 'right', 'top', 'bottom'])
@@ -1103,14 +1132,11 @@ class HelpView(arcade.View):
         self.ui_manager.enable()
         self.game_view.game_ui_manager.disable()
         self.game_view.paused = True
-        if self.game_view.sound_player is not None and not self.game_view.sound_player.playing:
-            self.game_view.sound_player.play()
 
     def on_hide_view(self):
         self.ui_manager.disable()
         self.game_view.game_ui_manager.enable()
         self.game_view.paused = False
-        self.game_view.sound_player.pause()
         if self.call_back is not None:
             self.call_back()
 
@@ -1216,8 +1242,6 @@ class SettingView(arcade.View):
 
     def on_show_view(self):
         self.ui_manager.enable()
-        if self.menu_view.sound_player is not None and not self.menu_view.sound_player.playing:
-            self.menu_view.sound_player.play()
 
     def on_hide_view(self):
         self.ui_manager.disable()
@@ -1272,7 +1296,8 @@ class GameView(arcade.View):
         super().__init__()
         # 以下为游戏界面内容
         # 游戏中的GUI
-        self.sound_player = None
+        self.sound_player = BackgroundMusicPlayer()
+
         self.showed = False
         self.boss_health = boss_health
         self.game_ui_manager = arcade.gui.UIManager()
@@ -1294,8 +1319,6 @@ class GameView(arcade.View):
         # 但加载音频会导致肉眼可见的卡顿
         # 因此这里以零音量播放一次，让其提前加载好
         self.fire_sound.play(volume=0)
-        self.battle_sound = arcade.Sound(BATTLE_SOUND, streaming=True)
-        self.boss_sound = arcade.Sound(BOSS_SOUND, streaming=True)
 
         self.game_v_box_right = arcade.gui.UIBoxLayout()
         self.pause_button = arcade.gui.UITextureButton(texture=arcade.load_texture("images/pause_square.png"))
@@ -1412,6 +1435,9 @@ class GameView(arcade.View):
                 align_x=50,
                 child=self.boss_health_bar
             ))
+            self.sound_player.play_bgm(arcade.Sound(BOSS_SOUND, streaming=True))
+        else:
+            self.sound_player.play_bgm(arcade.Sound(BATTLE_SOUND, streaming=True))
 
     def on_draw(self):
         self.clear()
@@ -1492,9 +1518,7 @@ class GameView(arcade.View):
                     align_x=50,
                     child=self.boss_health_bar
                 ))
-                self.sound_player.pause()
-                self.sound_player.delete()
-                self.sound_player = self.boss_sound.play(loop=True)
+                self.sound_player.play_bgm(arcade.Sound(BOSS_SOUND, streaming=True))
 
             # Boss战时才更新的内容：
             if self.boss_fight:
@@ -1571,6 +1595,9 @@ class GameView(arcade.View):
         :param win: 游戏是否赢了，赢：True，输：False
         :return:
         """
+        self.sound_player.stop()
+        sound = arcade.Sound(WIN_SOUND if win else LOSE_SOUND, streaming=False)
+        sound.play()
         over_view = GameOverView(win, self)
         self.window.show_view(over_view)
 
@@ -1749,20 +1776,11 @@ class GameView(arcade.View):
         self.player.change_y = 0
 
         self.firing = False
-
-        if self.sound_player is not None and not self.sound_player.playing:
-            self.sound_player.play()
-        else:
-            if self.boss_fight:
-                self.sound_player = self.boss_sound.play(loop=True)
-            else:
-                self.sound_player = self.battle_sound.play(loop=True, volume=0.9)
         if HINTS_STATUS['first_time']:
             self.show_first_time_hints()
 
     def on_hide_view(self):
         self.game_ui_manager.disable()
-        self.sound_player.pause()
 
     def on_click_pause(self, _=None):
         self.paused = not self.paused
