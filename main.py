@@ -97,40 +97,26 @@ try:
 except (UnicodeError, FileNotFoundError):
     pass
 
+
+DEFAULT_HINTS = {
+        "first_time": True,
+        "skill1": True,
+        "skill2": True,
+        "heal": True,
+        "shield": True,
+        "benefit": True,
+        "roll": True
+    }
 # 读取教程完成状态。不存在教程状态文件的话，假设全部教程都未完成
 try:
     with open("hints.json", 'r') as f:
         HINTS_STATUS = json.load(f)
 except (UnicodeError, FileNotFoundError, json.JSONDecodeError):
-    HINTS_STATUS = {
-        "first_time": True,
-        "skill1": True,
-        "skill2": True,
-        "heal": True,
-        "shield": True
-    }
+    HINTS_STATUS = DEFAULT_HINTS
 
 # 检查教程字典中是否有所需的键，没有就判断该文件已经损坏，重置教程状态
-try:
-    # noinspection PyStatementEffect
-    HINTS_STATUS['first_time']
-    # noinspection PyStatementEffect
-    HINTS_STATUS['skill1']
-    # noinspection PyStatementEffect
-    HINTS_STATUS['skill2']
-    # noinspection PyStatementEffect
-    HINTS_STATUS['heal']
-    # noinspection PyStatementEffect
-    HINTS_STATUS['shield']
-except KeyError:
-    print("Warning: 存储教程完成状态文件出现问题，已经重置该文件")
-    HINTS_STATUS = {
-        "first_time": True,
-        "skill1": True,
-        "skill2": True,
-        "heal": True,
-        "shield": True
-    }
+for one_key in DEFAULT_HINTS.keys():
+    HINTS_STATUS.setdefault(one_key, True)
 
 # 读取是否播放开火声音
 try:
@@ -620,7 +606,7 @@ class Enemy(LivingSprite):
         else:
             self.center_y = center_y
         if center_x is None:
-            self.center_x = random.randint(0, SCREEN_WIDTH)
+            self.center_x = random.randint(50, SCREEN_WIDTH - 50)
         else:
             self.center_x = center_x
 
@@ -1042,13 +1028,13 @@ class HelpView(arcade.View):
         self.call_back = callback
         if show_keys:
             if 0 > len(self.hints) <= 1:
-                self.hints[0] = self.hints[0] + "\n这是最后一条，继续按下回车退出教程"
+                self.hints[0] = self.hints[0] + "\n这是最后一条，继续按下回车或左键退出教程"
             elif len(self.hints) == 2:
-                self.hints[0] = self.hints[0] + "\n按下回车显示下一条\n按下ESC退出教程"
-                self.hints[1] = self.hints[1] + "\n这是最后一条，按下Z键显示上一条\n按下回车退出教程"
+                self.hints[0] = self.hints[0] + "\n按下回车或左键显示下一条\n按下ESC退出教程"
+                self.hints[1] = self.hints[1] + "\n这是最后一条，按下Z键显示上一条\n按下回车或左键退出教程"
             elif len(self.hints) > 2:
-                self.hints[0] = self.hints[0] + "\n按下回车显示下一条\n按下ESC退出教程"
-                self.hints[-1] = self.hints[-1] + "\n这是最后一条，按下Z键显示上一条\n按下回车退出教程"
+                self.hints[0] = self.hints[0] + "\n按下回车或左键显示下一条\n按下ESC退出教程"
+                self.hints[-1] = self.hints[-1] + "\n这是最后一条，按下Z键显示上一条\n按下回车或左键退出教程"
                 for i in range(1, len(self.hints) - 1):
                     self.hints[i] += "\n按下回车显示下一条\n按下Z键显示上一条"
         self.hint.text = self.hints[0]
@@ -1152,6 +1138,10 @@ class HelpView(arcade.View):
         if symbol == arcade.key.Z:
             self.last()
 
+    def on_mouse_press(self, x: int, y: int, button: int, modifiers: int):
+        if button == arcade.MOUSE_BUTTON_LEFT:
+            self.next()
+
 
 class SettingView(arcade.View):
     def __init__(self, menu_view: MenuView):
@@ -1243,13 +1233,10 @@ class SettingView(arcade.View):
             self.ui_manager.add(m)
         elif text == 'Ok':
             global HINTS_STATUS
-            HINTS_STATUS = {
-                "first_time": False,
-                "skill1": False,
-                "skill2": False,
-                "heal": False,
-                "shield": False
-            }
+            another = DEFAULT_HINTS.copy()
+            for a_key, value in another.items():
+                another[a_key] = False
+            HINTS_STATUS = another
 
     def on_click_reset(self, text=None):
         if text not in ["Ok", "Cancel"]:
@@ -1259,13 +1246,7 @@ class SettingView(arcade.View):
             self.ui_manager.add(m)
         elif text == 'Ok':
             global HINTS_STATUS
-            HINTS_STATUS = {
-                "first_time": True,
-                "skill1": True,
-                "skill2": True,
-                "heal": True,
-                "shield": True
-            }
+            HINTS_STATUS = DEFAULT_HINTS
 
     def on_click_sound(self, _=None):
         global PLAY_FIRE_SOUND
@@ -1519,6 +1500,12 @@ class GameView(arcade.View):
             if self.boss_fight:
                 self.boss_health_bar.text = f"Boss: {self.boss.health} / {self.boss.total_health}"
 
+            if self.game_scene['Benefit'] and HINTS_STATUS['benefit']:
+                self.clock.schedule_once(self.show_benefit_hint, 0.6)
+
+            if not HINTS_STATUS['skill1'] and not HINTS_STATUS['skill2'] and HINTS_STATUS['roll']:
+                self.show_roll_hint()
+
             # 检查玩家是否获得增益
             for one_benefit in self.player.collides_with_list(self.game_scene["Benefit"]):
                 one_benefit: Benefit
@@ -1651,6 +1638,25 @@ class GameView(arcade.View):
         rects = [None, get_rect(self.player), None]
         hint_view = HelpView(self, hints=words, rects=rects, show_keys=True,
                              callback=lambda: HINTS_STATUS.__setitem__("shield", False))
+        self.window.show_view(hint_view)
+
+    def show_benefit_hint(self, _=None):
+        words = ["场上出现了补给品，请注意被矩形圈出的物品\n",
+                 "补给品会提供多种增益。尝试捡起它吧！\n"]
+        rects = [get_rect(self.game_scene['Benefit'][0]), None]
+        hint_view = HelpView(self, hints=words, rects=rects, show_keys=True,
+                             callback=lambda: HINTS_STATUS.__setitem__("benefit", False))
+        self.window.show_view(hint_view)
+
+    def show_roll_hint(self, _=None):
+        words = ["使用鼠标滚轮可以选取你的技能\n"
+                 "向上滚动可以选取一技能，\n"
+                 "向下滚动可以选取二技能\n",
+                 "你选中的技能在充能完成后，右侧的图标会持续闪烁\n"
+                 "此时按下鼠标右键即可快速释放技能\n"]
+        rects = [None, get_rect(self.game_v_box_right)]
+        hint_view = HelpView(self, hints=words, rects=rects, show_keys=True,
+                             callback=lambda: HINTS_STATUS.__setitem__("roll", False))
         self.window.show_view(hint_view)
 
     def on_key_press(self, symbol, modifiers):
