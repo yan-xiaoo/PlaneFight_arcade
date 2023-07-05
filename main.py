@@ -750,6 +750,8 @@ class Bullet(arcade.Sprite):
 
     def on_update(self, delta_time=None):
         self.chase_time -= delta_time
+        if self.player.health <= 0:
+            self.kill()
         if self.chase == HARD and self.chase_time > 0:
             x_diff = self.player.center_x - self.center_x
             y_diff = self.player.center_y - self.center_y
