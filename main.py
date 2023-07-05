@@ -1,6 +1,7 @@
 import random
 import math
 import json
+import sys
 from collections import namedtuple
 
 import arcade
@@ -100,7 +101,6 @@ try:
                 LOADING_HINTS.append(one_hint.strip('\n'))
 except (UnicodeError, FileNotFoundError):
     pass
-
 
 DEFAULT_HINTS = {
         "first_time": True,
@@ -750,7 +750,7 @@ class Bullet(arcade.Sprite):
 
     def on_update(self, delta_time=None):
         self.chase_time -= delta_time
-        if self.player.health <= 0:
+        if self.player is not None and self.player.health <= 0:
             self.kill()
         if self.chase == HARD and self.chase_time > 0:
             x_diff = self.player.center_x - self.center_x
@@ -1672,7 +1672,12 @@ class GameView(arcade.View):
     def show_benefit_hint(self, _=None):
         words = ["场上出现了补给品，请注意被矩形圈出的物品\n",
                  "补给品会提供多种增益。尝试捡起它吧！\n"]
-        rects = [get_rect(self.game_scene['Benefit'][0]), None]
+        # 这个函数的延时触发较长，可能出现补给品被检走导致没了的情况，得不到rect了
+        # 如果这种事情真的发生了，我们就不展示教程，下次再说
+        try:
+            rects = [get_rect(self.game_scene['Benefit'][0]), None]
+        except IndexError:
+            return
         hint_view = HelpView(self, hints=words, rects=rects, show_keys=True,
                              callback=lambda: HINTS_STATUS.__setitem__("benefit", False))
         self.window.show_view(hint_view)
@@ -1749,6 +1754,10 @@ class GameView(arcade.View):
             self.firing = False
 
     def on_mouse_scroll(self, x: int, y: int, scroll_x: int, scroll_y: int):
+        # 我也不知道为啥，但是windows下鼠标滚轮向上是负的，向下是正的
+        # macOS下滚轮向下负的，向上正的……
+        if "win" in sys.platform:
+            scroll_y = -scroll_y
         if scroll_y > 0:
             self.skill_selected = 2
         if scroll_y < 0:
@@ -1813,8 +1822,16 @@ class GameOverView(arcade.View):
         self.over_ui_manager.add(arcade.gui.UIAnchorWidget(
             anchor_x="center_x",
             anchor_y="center_y",
-            align_y=100 if LOADING_HINTS else 70,
+            align_y=160 if LOADING_HINTS else 130,
             child=main_text
+        ))
+        score_text = arcade.gui.UITextArea(text=f"Score: {self.game_scene.score}",
+                                           font_name="Kenney Future", font_size=20, width=200)
+        self.over_ui_manager.add(arcade.gui.UIAnchorWidget(
+            anchor_x="center_x",
+            anchor_y="center_y",
+            align_y=100 if LOADING_HINTS else 70,
+            child=score_text
         ))
 
         self.hint_text = arcade.gui.UITextArea(font_name="华文黑体", font_size=25)
