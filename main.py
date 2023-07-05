@@ -67,9 +67,9 @@ HEALTH_IMAGES = ["images/heart_empty.png", "images/heart.png"]
 CANCEL_IMAGE = "images/cancel.png"
 
 FIRE_SOUND = "sound/laser1.wav"
-BATTLE_SOUND = "sound/battle.ogg"
-MENU_SOUND = "sound/menu.ogg"
-BOSS_SOUND = "sound/boss.ogg"
+BATTLE_SOUND = "sound/battle.wav"
+MENU_SOUND = "sound/menu.wav"
+BOSS_SOUND = "sound/boss.wav"
 
 WIN_SOUND = "sound/win.mp3"
 LOSE_SOUND = "sound/lose.mp3"
@@ -1597,7 +1597,7 @@ class GameView(arcade.View):
         """
         self.sound_player.stop()
         sound = arcade.Sound(WIN_SOUND if win else LOSE_SOUND, streaming=False)
-        sound.play()
+        sound.play(volume=0.5)
         over_view = GameOverView(win, self)
         self.window.show_view(over_view)
 
