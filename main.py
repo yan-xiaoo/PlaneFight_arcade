@@ -201,20 +201,26 @@ class TextureButton(arcade.gui.UITextureButton):
         super().__init__(texture=textures[cur_index], *args, **kwargs)
         self.many_textures = textures
         self.current_indexing = cur_index
+        self.initial_index = cur_index
         self.total_update_time = self.update_time = update_time
-        self.enabled = enable
+        self._enabled = enable
 
     def on_update(self, dt):
-        if not self.enabled:
-            # 如果禁用了切换，就重置为第一张图片
-            self.texture = self.many_textures[0]
-            return
-        self.update_time -= dt
-        if self.update_time <= 0:
-            self.update_time = self.total_update_time
-            self.current_indexing += 1
-            self.current_indexing %= len(self.many_textures)
-            self.texture = self.many_textures[self.current_indexing]
+        if self.enabled:
+            self.update_time -= dt
+            if self.update_time <= 0:
+                self.update_time = self.total_update_time
+                self.current_indexing += 1
+                self.current_indexing %= len(self.many_textures)
+                self.texture = self.many_textures[self.current_indexing]
+
+    @property
+    def enabled(self):
+        return self._enabled
+
+    @enabled.setter
+    def enabled(self, new):
+        self._enabled = new
 
 
 class HealthBar:
@@ -775,7 +781,6 @@ class Player(LivingSprite):
         self.invincible_effect.append_texture(arcade.texture.make_soft_circle_texture(100, (95, 185, 240), outer_alpha=100))
         self.invincible_effect.append_texture(arcade.texture.make_soft_circle_texture(100, (95, 185, 240)))
         self.invincible_effect.visible = False
-        print(self.invincible_effect.textures)
         self.game_view.game_scene.add_sprite("Player", self.invincible_effect)
 
         # 存储玩家的技能是否可以使用
@@ -858,7 +863,7 @@ class Player(LivingSprite):
         :param duration: 持续时间
         :return: 无
         """
-        if self.skills[0]:
+        if self.skills[0] and not self.bullet_through:
             self.skills[0] = False
             self.total_fire_cd = 0.05
             self.bullet_through = True
@@ -1323,17 +1328,18 @@ class GameView(arcade.View):
                                       arcade.load_texture(UNLIMITED_BULLET[1]),
                                       [arcade.load_texture(UNLIMITED_BULLET[2][0]),
                                        arcade.load_texture(UNLIMITED_BULLET[2][1])]]
-        self.player_skill1_image = arcade.gui.UITextureButton(texture=self.player_skill1_texture[0], width=64,
-                                                              height=64)
-        self.player_skill1_hint = TextureButton(textures=self.player_skill1_texture[2], width=50, height=50)
+        self.player_skill1_image = TextureButton(textures=[self.player_skill1_texture[0], self.player_skill1_texture[1]], width=64,
+                                                 height=64, enable=False, update_time=0.15)
+        self.player_skill1_hint = TextureButton(textures=self.player_skill1_texture[2], width=50, height=50, cur_index=1)
 
         self.player_skill2_texture = [arcade.load_texture(CHASE_FIRE[0]),
                                       arcade.load_texture(CHASE_FIRE[1]),
                                       [arcade.load_texture(CHASE_FIRE[2][0]),
                                        arcade.load_texture(CHASE_FIRE[2][1])]]
-        self.player_skill2_image = arcade.gui.UITextureButton(texture=self.player_skill2_texture[0], width=64,
-                                                              height=64)
-        self.player_skill2_hint = TextureButton(textures=self.player_skill2_texture[2], width=50, height=50)
+        self.player_skill2_image = TextureButton(textures=[self.player_skill2_texture[0], self.player_skill2_texture[1]], width=64,
+                                                 height=64, enable=False, update_time=0.15)
+        self.player_skill2_hint = TextureButton(textures=self.player_skill2_texture[2], width=50, height=50, cur_index=1)
+        self.skill_selected = 0
 
         self.game_v_box_right.add(self.player_skill1_image.with_space_around(top=30))
         self.game_v_box_right.add(self.player_skill1_hint.with_space_around())
@@ -1455,16 +1461,28 @@ class GameView(arcade.View):
             # 更新玩家技能提示
             if self.player.skills[0]:
                 self.player_skill1_hint.enabled = True
-                self.player_skill1_image.texture = self.player_skill1_texture[1]
+                if self.skill_selected == 1:
+                    self.player_skill1_image.enabled = True
+                else:
+                    self.player_skill1_image.enabled = False
+                    self.player_skill1_image.texture = self.player_skill1_texture[1]
             else:
                 self.player_skill1_hint.enabled = False
+                self.player_skill1_hint.texture = self.player_skill1_texture[2][1]
+                self.player_skill1_image.enabled = False
                 self.player_skill1_image.texture = self.player_skill1_texture[0]
 
             if self.player.skills[1]:
                 self.player_skill2_hint.enabled = True
-                self.player_skill2_image.texture = self.player_skill2_texture[1]
+                if self.skill_selected == 2:
+                    self.player_skill2_image.enabled = True
+                else:
+                    self.player_skill2_image.enabled = False
+                    self.player_skill2_image.texture = self.player_skill2_texture[1]
             else:
                 self.player_skill2_hint.enabled = False
+                self.player_skill2_hint.texture = self.player_skill2_texture[2][1]
+                self.player_skill2_image.enabled = False
                 self.player_skill2_image.texture = self.player_skill2_texture[0]
 
             # 首先，随机的生成一些背景中的小东西
@@ -1685,10 +1703,21 @@ class GameView(arcade.View):
     def on_mouse_press(self, x: int, y: int, button: int, modifiers: int):
         if button == arcade.MOUSE_BUTTON_LEFT:
             self.firing = True
+        elif button == arcade.MOUSE_BUTTON_RIGHT:
+            if self.skill_selected == 1:
+                self.player.unlimited_bullets(5)
+            elif self.skill_selected == 2:
+                self.player.chase_bullets()
 
     def on_mouse_release(self, x: int, y: int, button: int, modifiers: int):
         if button == arcade.MOUSE_BUTTON_LEFT:
             self.firing = False
+
+    def on_mouse_scroll(self, x: int, y: int, scroll_x: int, scroll_y: int):
+        if scroll_y > 0:
+            self.skill_selected = 2
+        if scroll_y < 0:
+            self.skill_selected = 1
 
     def update_player_speed(self):
         # Calculate speed based on the keys pressed
