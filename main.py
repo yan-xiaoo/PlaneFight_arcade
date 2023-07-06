@@ -2,6 +2,7 @@ import random
 import math
 import json
 import sys
+import time
 from collections import namedtuple
 
 import arcade
@@ -181,6 +182,28 @@ class BackgroundMusicPlayer:
 
     def stop(self):
         self.sound.stop(self.music_player)
+
+
+class BadClock:
+    """
+    一个坏了的钟，仅仅在你更新它时才会走
+    你问这玩意有什么用？用来当作pyglet.clock.Clock的计时函数。这样一来，游戏暂停的时候
+    pyglet.clock.Clock就会觉得时间根本没走过，就不会更新游戏了
+    """
+    def __init__(self):
+        self.time = time.time()
+        self.time_passed = 0
+
+    def __call__(self, *args, **kwargs):
+        return self.time + self.time_passed
+
+    def update(self, time_passed):
+        """
+        更新这个坏了的钟
+        :param time_passed: 距离上一次更新过去的时间
+        :return:None
+        """
+        self.time_passed += time_passed
 
 
 class BackgroundObjects(arcade.Sprite):
@@ -533,7 +556,7 @@ class Boss(LivingSprite):
         一技能：Boss持续发射8发子弹，间隔0.75秒，子弹竖直向下移动
         :return:
         """
-        self.game_view.clock.schedule_interval_soft(self._shot, 0.75)
+        self.game_view.clock_not_paused.schedule_interval_soft(self._shot, 0.75)
         self._skill1_count = 0
 
     def _shot(self, _=None):
@@ -541,7 +564,7 @@ class Boss(LivingSprite):
         self.game_view.game_scene.add_sprite("EnemyBullet", bullet)
         self._skill1_count += 1
         if self._skill1_count >= 8:
-            self.game_view.clock.unschedule(self._shot)
+            self.game_view.clock_not_paused.unschedule(self._shot)
 
     def chase_shot(self):
         """
@@ -549,7 +572,7 @@ class Boss(LivingSprite):
         :return:
         """
         self._skill2_count = 0
-        self.game_view.clock.schedule_interval_soft(self._chase_shot, 0.5)
+        self.game_view.clock_not_paused.schedule_interval_soft(self._chase_shot, 0.5)
 
     def _chase_shot(self, _=None):
         self._skill2_count += 1
@@ -557,7 +580,7 @@ class Boss(LivingSprite):
                         player=self.game_view.player)
         self.game_view.game_scene.add_sprite("EnemyBullet", bullet)
         if self._skill2_count >= 3:
-            self.game_view.clock.unschedule(self._chase_shot)
+            self.game_view.clock_not_paused.unschedule(self._chase_shot)
 
     def many_bullets(self):
         """
@@ -566,7 +589,7 @@ class Boss(LivingSprite):
         :return:
         """
         self._skill3_count = 0
-        self.game_view.clock.schedule_interval_soft(self._many_bullets, 0.1)
+        self.game_view.clock_not_paused.schedule_interval_soft(self._many_bullets, 0.1)
 
     def _many_bullets(self, _=None):
         self._skill3_count += 1
@@ -580,7 +603,7 @@ class Boss(LivingSprite):
         self.game_view.game_scene.add_sprite("EnemyBullet", bullet3)
 
         if self._skill3_count >= 10:
-            self.game_view.clock.unschedule(self._many_bullets)
+            self.game_view.clock_not_paused.unschedule(self._many_bullets)
 
     def additional_planes(self):
         """
@@ -604,8 +627,8 @@ class Boss(LivingSprite):
         self.game_view.game_scene.add_sprite("Enemy", plane_b)
 
         # 15秒后把巡航范围改回来
-        self.game_view.clock.schedule_once(lambda event: setattr(self, "left_range", 0), 15)
-        self.game_view.clock.schedule_once(lambda event: setattr(self, "right_range", SCREEN_WIDTH), 15)
+        self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "left_range", 0), 15)
+        self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "right_range", SCREEN_WIDTH), 15)
 
 
 class Enemy(LivingSprite):
@@ -813,6 +836,8 @@ class Player(LivingSprite):
         # 玩家技能所需要的记录变量
         self._enemy = []
         self._enemy_killed = 0
+        self.skill1_time = 0
+        self.skill2_break = 0
 
     def on_update(self, delta_time=None):
         super().on_update(delta_time)
@@ -879,7 +904,7 @@ class Player(LivingSprite):
             self.set_texture(1)
         elif delta_health > 0:
             self.set_texture(2)
-        self.game_view.clock.schedule_once(lambda event: self.set_texture(0), 0.5)
+        self.game_view.clock_not_paused.schedule_once(lambda event: self.set_texture(0), 0.5)
 
     def unlimited_bullets(self, duration=5):
         """
@@ -892,11 +917,11 @@ class Player(LivingSprite):
             self.total_fire_cd = 0.05
             self.bullet_through = True
             if not self.game_view.boss_fight:
-                self.game_view.clock.schedule_once(lambda event: setattr(self, "total_fire_cd", 0.25), duration)
-                self.game_view.clock.schedule_once(lambda event: setattr(self, "bullet_through", False), duration)
+                self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "total_fire_cd", 0.25), duration)
+                self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "bullet_through", False), duration)
             else:
-                self.game_view.clock.schedule_once(lambda event: setattr(self, "total_fire_cd", 0.25), duration * 2)
-                self.game_view.clock.schedule_once(lambda event: setattr(self, "bullet_through", False), duration * 2)
+                self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "total_fire_cd", 0.25), duration * 2)
+                self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "bullet_through", False), duration * 2)
 
     def chase_bullets(self):
         """
@@ -910,9 +935,9 @@ class Player(LivingSprite):
             self._enemy_killed = 0
             self._enemy = []
             if not self.game_view.boss_fight:
-                self.game_view.clock.schedule_interval_soft(self._chase_bullets, 0.2)
+                self.game_view.clock_not_paused.schedule_interval_soft(self._chase_bullets, 0.2)
             else:
-                self.game_view.clock.schedule_interval_soft(self._chase_bullets_boss, 0.2)
+                self.game_view.clock_not_paused.schedule_interval_soft(self._chase_bullets_boss, 0.2)
 
     def _chase_bullets_boss(self, _):
         self._enemy_killed += 1
@@ -921,7 +946,7 @@ class Player(LivingSprite):
                         chase_time=9999999, speed=600)
         self.game_view.game_scene.add_sprite("PlayerBullet", bullet)
         if self._enemy_killed > 4:
-            self.game_view.clock.unschedule(self._chase_bullets_boss)
+            self.game_view.clock_not_paused.unschedule(self._chase_bullets_boss)
 
     def _chase_bullets(self, _):
         for enemy in self.game_view.game_scene.get_sprite_list("Enemy"):
@@ -939,7 +964,7 @@ class Player(LivingSprite):
 
         if self._enemy_killed >= 10 or self.game_view.boss_fight:
             self._enemy.clear()
-            self.game_view.clock.unschedule(self._chase_bullets)
+            self.game_view.clock_not_paused.unschedule(self._chase_bullets)
 
     def on_damaged(self, bullet):
         if self.bullet_through:
@@ -1397,6 +1422,8 @@ class GameView(arcade.View):
         self.game_scene: arcade.Scene = arcade.Scene()
         self.paused = False
         self.clock = pyglet.clock.Clock()
+        self.bad_timer = BadClock()
+        self.clock_not_paused = pyglet.clock.Clock(time_function=self.bad_timer)
 
         # 控制方向所用的变量
         self.up_pressed = False
@@ -1454,6 +1481,7 @@ class GameView(arcade.View):
         :return: 无
         """
         diff = self.clock.tick()
+        self.clock_not_paused.tick()
         if self.fps_enable:
             self.fps_text.text = f"FPS: {arcade.get_fps():.2f}"
         else:
@@ -1467,6 +1495,7 @@ class GameView(arcade.View):
             self.game_scene.on_update(diff)
             self.game_scene.update_animation(diff)
             self.health_bar.on_update(diff)
+            self.bad_timer.update(diff)
 
             # 更新玩家技能提示
             if self.player.skills[0]:
@@ -1757,7 +1786,7 @@ class GameView(arcade.View):
     def on_mouse_scroll(self, x: int, y: int, scroll_x: int, scroll_y: int):
         # 我也不知道为啥，但是windows下鼠标滚轮向上是负的，向下是正的
         # macOS下滚轮向下负的，向上正的……
-        if "win" in sys.platform:
+        if "win32" in sys.platform:
             scroll_y = -scroll_y
         if scroll_y > 0:
             self.skill_selected = 2
