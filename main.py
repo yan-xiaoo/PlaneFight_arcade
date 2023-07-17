@@ -166,12 +166,16 @@ class BackgroundMusicPlayer:
             cls.instance.append(self)
         return cls.instance[0]
 
-    def play_bgm(self, source: arcade.sound.Sound, volume=1.0):
+    def play_bgm(self, source, volume=1.0):
         """
         播放背景音乐
         :param volume: 播放音量，默认为1
         :param source: 音乐文件
         """
+        if isinstance(source, list):
+            source = random.choice(source)
+        if isinstance(source, str):
+            source = arcade.Sound(source, streaming=True)
         if self.sound is not None:
             if self.sound.file_name == source.file_name and self.sound.is_playing(self.music_player):
                 return
@@ -179,9 +183,28 @@ class BackgroundMusicPlayer:
             self.sound.stop(self.music_player)
         self.sound = source
         self.music_player = source.play(volume=volume, loop=True)
+        self.music_player.seek(0)
 
     def stop(self):
         self.sound.stop(self.music_player)
+
+    def play_if_not_started(self, sources, volume=1) -> None:
+        """
+        如果sources中的音乐没有被播放，则播放sources[index]对应的音乐
+        :param volume: 音量
+        :param sources: 检查是否在播放的音乐的列表
+        :return: None
+        """
+        if not isinstance(sources, list) and not isinstance(sources, tuple):
+            sources = [sources]
+            index = 0
+        for i, one in enumerate(sources):
+            if isinstance(one, str):
+                sources[i] = arcade.Sound(one, streaming=True)
+        if self.sound is None:
+            self.play_bgm(sources, volume=volume)
+        elif self.sound.file_name not in [name.file_name for name in sources]:
+            self.play_bgm(sources, volume=volume)
 
 
 class BadClock:
@@ -1049,7 +1072,7 @@ class MenuView(arcade.View):
 
     def on_show_view(self):
         self.menu_ui_manager.enable()
-        self.sound_player.play_bgm(arcade.Sound(MENU_SOUND, streaming=True))
+        self.sound_player.play_if_not_started(MENU_SOUND)
 
     def on_hide_view(self):
         self.menu_ui_manager.disable()
@@ -1320,7 +1343,7 @@ class GameView(arcade.View):
     游戏的主程序
     """
 
-    def __init__(self, boss_fight=False, boss_health=1000):
+    def __init__(self, boss_fight=False, boss_health=750):
         super().__init__()
         # 以下为游戏界面内容
         # 游戏中的GUI
@@ -1380,7 +1403,7 @@ class GameView(arcade.View):
 
         self.health_bar = HealthBar([arcade.load_texture(HEALTH_IMAGES[0]), arcade.load_texture(HEALTH_IMAGES[1])],
                                     self)
-        self.boss_health_bar = arcade.gui.UITextArea(text="Boss: 1000 / 1000", font_name="Kenney Future", font_size=30,
+        self.boss_health_bar = arcade.gui.UITextArea(text="Boss: 750 / 750", font_name="Kenney Future", font_size=30,
                                                      text_color=(255, 0, 0), width=500)
 
         self.game_ui_manager.add(arcade.gui.UIAnchorWidget(
@@ -1455,7 +1478,7 @@ class GameView(arcade.View):
         self.score = 0
         self.score_enable = True
         if self.boss_fight:
-            self.boss = Boss(image=BOSS, game_scene=self, health=self.boss_health, total_health=1000, invincible=0.1,
+            self.boss = Boss(image=BOSS, game_scene=self, health=self.boss_health, total_health=750, invincible=0.1,
                              center_x=SCREEN_WIDTH / 2, center_y=SCREEN_HEIGHT - 180)
             self.game_scene.add_sprite("Enemy", self.boss)
             self.game_ui_manager.add(arcade.gui.UIAnchorWidget(
@@ -1465,9 +1488,9 @@ class GameView(arcade.View):
                 align_x=50,
                 child=self.boss_health_bar
             ))
-            self.sound_player.play_bgm(arcade.Sound(BOSS_SOUND, streaming=True), volume=0.7)
+            self.sound_player.play_bgm(BOSS_SOUND, volume=0.7)
         else:
-            self.sound_player.play_bgm(arcade.Sound(BATTLE_SOUND, streaming=True))
+            self.sound_player.play_bgm(BATTLE_SOUND)
 
     def on_draw(self):
         self.clear()
@@ -1539,7 +1562,7 @@ class GameView(arcade.View):
             # 检查Boss该不该生成
             if self.score > 500 and not self.boss_fight:
                 self.boss_fight = True
-                self.boss = Boss(image=BOSS, game_scene=self, health=self.boss_health, total_health=1000,
+                self.boss = Boss(image=BOSS, game_scene=self, health=self.boss_health, total_health=750,
                                  invincible=0.1,
                                  center_x=SCREEN_WIDTH / 2, center_y=SCREEN_HEIGHT - 180)
                 self.game_scene.add_sprite("Enemy", self.boss)
@@ -1550,7 +1573,7 @@ class GameView(arcade.View):
                     align_x=50,
                     child=self.boss_health_bar
                 ))
-                self.sound_player.play_bgm(arcade.Sound(BOSS_SOUND, streaming=True), volume=0.7)
+                self.sound_player.play_bgm(BOSS_SOUND, volume=0.7)
 
             # Boss战时才更新的内容：
             if self.boss_fight:
@@ -1585,7 +1608,7 @@ class GameView(arcade.View):
                     if one_enemy.health <= 0:
                         explode = Explosion((one_enemy.center_x, one_enemy.center_y))
                         self.game_scene.add_sprite("Explosion", explode)
-                        self.score += 10
+                        self.score += 20
                         break
 
             if self.player.health > 0:
@@ -1605,7 +1628,7 @@ class GameView(arcade.View):
                     if one_enemy.health <= 0:
                         explode = Explosion((one_enemy.center_x, one_enemy.center_y))
                         self.game_scene.add_sprite("Explosion", explode)
-                        self.score += 10
+                        self.score += 20
                     self.player.on_damaged(one_enemy)
                     if self.player.health <= 0:
                         explode = Explosion((self.player.center_x, self.player.center_y))
