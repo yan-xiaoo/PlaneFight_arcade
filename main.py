@@ -1454,7 +1454,14 @@ class GameView(arcade.View):
         self.left_pressed = False
         self.right_pressed = False
 
+        # 手柄控制用
+        self.joystick_manager = pyglet.input.ControllerManager()
+        self.joystick_manager.push_handlers(on_connect=self.on_connect, on_disconnect=self.on_disconnect)
+        self.joystick = None
+        self.joystick_choose_skill = False
+
         self.firing = False
+        self._skill_selected = 1
 
         self.boss_fight = boss_fight
 
@@ -1513,12 +1520,20 @@ class GameView(arcade.View):
             self.score_text.text = f"Score: {self.score}"
         else:
             self.score_text.text = f""
+
+        if self.joystick is None:
+            joysticks = self.joystick_manager.get_controllers()
+            if joysticks:
+                self.on_connect(joysticks[0])
+
         if not self.paused:
             # 先更新内容
             self.game_scene.on_update(diff)
             self.game_scene.update_animation(diff)
             self.health_bar.on_update(diff)
             self.bad_timer.update(diff)
+
+            self.update_player_speed()
 
             # 更新玩家技能提示
             if self.player.skills[0]:
@@ -1746,21 +1761,57 @@ class GameView(arcade.View):
                              callback=lambda: HINTS_STATUS.__setitem__("roll", False))
         self.window.show_view(hint_view)
 
+    def on_connect(self, controller: pyglet.input.Controller):
+        self.joystick = controller
+        self.joystick.open()
+        self.joystick.push_handlers(on_button_press=self.on_joybutton_press,
+                                    on_button_release=self.on_joybutton_release,
+                                    on_stick_motion=self.on_stick_motion)
+        print("joystick inserted")
+
+    def on_disconnect(self, controller):
+        self.joystick.close()
+        self.joystick.remove_handlers(on_button_press=self.on_joybutton_press,
+                                    on_button_release=self.on_joybutton_release,
+                                    on_stick_motion=self.on_stick_motion)
+        self.joystick = None
+        print("joystick out")
+
+    def on_joybutton_press(self, joystick, button):
+        if button == 'y':
+            self.firing = True
+        if button == 'a':
+            self.use_selected_skill()
+        if button == 'start':
+            self.on_click_pause()
+
+    def on_joybutton_release(self, joystick, button):
+        if button == 'y':
+            self.firing = False
+
+    def on_stick_motion(self, controller, name, x, y):
+        if name == "rightstick":
+            if y > 0 and self.joystick_choose_skill:
+                self.skill_selected -= 1
+                self.joystick_choose_skill = False
+            elif y < 0 and self.joystick_choose_skill:
+                self.skill_selected += 1
+                self.joystick_choose_skill = False
+
+            if y == 0 and not self.joystick_choose_skill:
+                self.joystick_choose_skill = True
+
     def on_key_press(self, symbol, modifiers):
         """Called whenever a key is pressed. """
 
         if symbol == arcade.key.UP or symbol == arcade.key.W:
             self.up_pressed = True
-            self.update_player_speed()
         elif symbol == arcade.key.DOWN or symbol == arcade.key.S:
             self.down_pressed = True
-            self.update_player_speed()
         elif symbol == arcade.key.LEFT or symbol == arcade.key.A:
             self.left_pressed = True
-            self.update_player_speed()
         elif symbol == arcade.key.RIGHT or symbol == arcade.key.D:
             self.right_pressed = True
-            self.update_player_speed()
 
         if symbol == PAUSE_KEY:
             self.on_click_pause()
@@ -1780,16 +1831,12 @@ class GameView(arcade.View):
 
         if symbol == arcade.key.UP or symbol == arcade.key.W:
             self.up_pressed = False
-            self.update_player_speed()
         elif symbol == arcade.key.DOWN or symbol == arcade.key.S:
             self.down_pressed = False
-            self.update_player_speed()
         elif symbol == arcade.key.LEFT or symbol == arcade.key.A:
             self.left_pressed = False
-            self.update_player_speed()
         elif symbol == arcade.key.RIGHT or symbol == arcade.key.D:
             self.right_pressed = False
-            self.update_player_speed()
         if symbol == FIRE_KEY:
             self.firing = False
 
@@ -1797,10 +1844,26 @@ class GameView(arcade.View):
         if button == arcade.MOUSE_BUTTON_LEFT:
             self.firing = True
         elif button == arcade.MOUSE_BUTTON_RIGHT:
-            if self.skill_selected == 1:
-                self.player.unlimited_bullets(5)
-            elif self.skill_selected == 2:
-                self.player.chase_bullets()
+            self.use_selected_skill()
+
+    def use_selected_skill(self):
+        if self.skill_selected == 1:
+            self.player.unlimited_bullets(5)
+        elif self.skill_selected == 2:
+            self.player.chase_bullets()
+
+    @property
+    def skill_selected(self):
+        return self._skill_selected
+
+    @skill_selected.setter
+    def skill_selected(self, new: int):
+        if new > 2:
+            self._skill_selected = 2
+        elif new < 1:
+            self._skill_selected = 1
+        else:
+            self._skill_selected = new
 
     def on_mouse_release(self, x: int, y: int, button: int, modifiers: int):
         if button == arcade.MOUSE_BUTTON_LEFT:
@@ -1821,6 +1884,10 @@ class GameView(arcade.View):
         self.player.change_x = 0
         self.player.change_y = 0
 
+        if self.joystick is not None:
+            self.examine_joystick_motion()
+            return
+
         if self.up_pressed and not self.down_pressed:
             self.player.change_y = PLAYER_SPEED
         elif self.down_pressed and not self.up_pressed:
@@ -1829,6 +1896,13 @@ class GameView(arcade.View):
             self.player.change_x = -PLAYER_SPEED
         elif self.right_pressed and not self.left_pressed:
             self.player.change_x = PLAYER_SPEED
+
+    def examine_joystick_motion(self):
+        if self.joystick is None:
+            return
+        self.joystick: pyglet.input.Controller
+        self.player.change_x = PLAYER_SPEED * self.joystick.leftx
+        self.player.change_y = PLAYER_SPEED * self.joystick.lefty
 
     def on_show_view(self):
         self.game_ui_manager.enable()
@@ -1845,6 +1919,8 @@ class GameView(arcade.View):
 
     def on_hide_view(self):
         self.game_ui_manager.disable()
+        if self.joystick is not None:
+            self.on_disconnect(self.joystick)
 
     def on_click_pause(self, _=None):
         self.paused = not self.paused
