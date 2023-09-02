@@ -2,10 +2,9 @@ import random
 import math
 import json
 import sys
-import time
 from Libs.BackgroundMusicPlayer import BackgroundMusicPlayer
 from Libs.clock import BadClock
-from Libs.livingsprite import LivingSprite
+from Libs.livingsprite import LivingSprite, load_textures_pair_from_webp
 from typing import Union
 from collections import namedtuple
 import arcade
@@ -51,27 +50,16 @@ PLAYER_BULLET = "images/laser1.png"
 ENEMY = ["images/enemy1.png", "images/enemy2.png",
          "images/enemy3.png", "images/enemy4.png"]
 
-start = time.time()
-BOSS = arcade.load_texture("dlc_ishar_mla/images/fight_idle/1.png")
-BOSS_MOVE = [f"dlc_ishar_mla/images/move1/{i}.png" for i in range(1, 15)]
-BOSS_MOVE = [arcade.load_texture_pair(i) for i in BOSS_MOVE]
-BOSS_MOVE = list(zip(*BOSS_MOVE))
-BOSS_SKILL = [f"dlc_ishar_mla/images/skill1/{i}.png/" for i in range(1, 29)]
-BOSS_SKILL = [arcade.load_texture_pair(i) for i in BOSS_SKILL]
-BOSS_SKILL = list(zip(*BOSS_SKILL))
-BOSS_DIE = [f"dlc_ishar_mla/images/die1/{i}.png" for i in range(1, 30)]
-BOSS_DIE = [arcade.load_texture_pair(i) for i in BOSS_DIE]
-BOSS_DIE = list(zip(*BOSS_DIE))
-BOSS_ATTACK = [f"dlc_ishar_mla/images/attack1/{i}.png" for i in range(1, 29)]
-BOSS_ATTACK = [arcade.load_texture_pair(i) for i in BOSS_ATTACK]
-BOSS_ATTACK = list(zip(*BOSS_ATTACK))
+BOSS = arcade.load_texture("dlc_ishar_mla/images/normal_start.png")
+BOSS_MOVE = load_textures_pair_from_webp("dlc_ishar_mla/images/normal_move.webp", scale=3)
+BOSS_SKILL = load_textures_pair_from_webp("dlc_ishar_mla/images/normal_heal.webp", scale=3)
+BOSS_DIE = load_textures_pair_from_webp("dlc_ishar_mla/images/normal_die.webp", scale=3)
+BOSS_ATTACK = load_textures_pair_from_webp("dlc_ishar_mla/images/normal_attack.webp", scale=3)
 BOSS_ATTACK_1 = "dlc_ishar_mla/images/boss_attack_1.png"
 BOSS_THROW_BALL = 'dlc_ishar_mla/images/throw_ball.png'
 BOSS_TEARS = "dlc_ishar_mla/images/tear.png"
 BOSS_TEARS_TOUCHED = "dlc_ishar_mla/images/tear_down.png"
 BOSS_TEARS_ENERGY = "dlc_ishar_mla/images/tear_energy.png"
-ALL_BOSS_TEXTURES = [*BOSS_MOVE[0], *BOSS_MOVE[1], *BOSS_SKILL[0], *BOSS_SKILL[1], *BOSS_DIE[0], *BOSS_DIE[1],
-                     *BOSS_ATTACK[0], *BOSS_ATTACK[1]]
 
 # 敌方导弹的图片
 MISSILE_ENEMY = "images/missile_enemy.png"
@@ -97,12 +85,12 @@ CANCEL_IMAGE = "images/cancel.png"
 FIGHT_IDLE = [f"dlc_ishar_mla/images/fight_idle/{i}.png" for i in range(1, 92)]
 
 FIRE_SOUND = "sound/laser1.wav"
-BATTLE_SOUND = ["dlc_ishar_mla/sounds/battle1.wav", "dlc_ishar_mla/sounds/battle2.wav"]
-MENU_SOUND = ["dlc_ishar_mla/sounds/menu1.wav", "dlc_ishar_mla/sounds/menu2.wav",
-              "dlc_ishar_mla/sounds/menu3.wav"]
-MENU_SOUND_DISTORTED = ['dlc_ishar_mla/sounds/menu_distorted1.wav',
-                        'dlc_ishar_mla/sounds/menu_distorted2.wav']
-BOSS_SOUND = "dlc_ishar_mla/sounds/boss.wav"
+BATTLE_SOUND = ["dlc_ishar_mla/sounds/battle1.mp3", "dlc_ishar_mla/sounds/battle2.mp3"]
+MENU_SOUND = ["dlc_ishar_mla/sounds/menu1.mp3", "dlc_ishar_mla/sounds/menu2.mp3",
+              "dlc_ishar_mla/sounds/menu3.mp3"]
+MENU_SOUND_DISTORTED = ['dlc_ishar_mla/sounds/menu_distorted1.mp3',
+                        'dlc_ishar_mla/sounds/menu_distorted2.mp3']
+BOSS_SOUND = "dlc_ishar_mla/sounds/boss.mp3"
 
 WIN_SOUND = "sound/win.mp3"
 LOSE_SOUND = "sound/lose.mp3"
@@ -1614,7 +1602,7 @@ class GameView(arcade.View):
         self.score_enable = True
         if self.boss_fight:
             self.boss = Boss(textures=BOSS, game_scene=self, health=self.boss_health, total_health=500, invincible=0.1,
-                             center_x=SCREEN_WIDTH / 2, center_y=SCREEN_HEIGHT - 180, scale=0.5)
+                             center_x=SCREEN_WIDTH / 2, center_y=SCREEN_HEIGHT - 180, scale=1)
             self.game_scene.add_sprite("Enemy", self.boss)
             self.game_ui_manager.add(arcade.gui.UIAnchorWidget(
                 anchor_x='center',
@@ -1635,8 +1623,6 @@ class GameView(arcade.View):
             self.player.center_y = 0
         else:
             self.sound_player.play_bgm(BATTLE_SOUND)
-
-        self.game_scene.get_sprite_list("Enemy").preload_textures(ALL_BOSS_TEXTURES)
 
     def on_draw(self):
         self.clear()
@@ -1705,7 +1691,7 @@ class GameView(arcade.View):
                     one_enemy.kill()
                 self.boss = Boss(textures=BOSS, game_scene=self, health=self.boss_health, total_health=500,
                                  invincible=0.1,
-                                 center_x=SCREEN_WIDTH / 2, center_y=SCREEN_HEIGHT - 180, scale=0.5)
+                                 center_x=SCREEN_WIDTH / 2, center_y=SCREEN_HEIGHT - 180, scale=1)
                 self.game_scene.add_sprite("Enemy", self.boss)
                 self.game_ui_manager.add(arcade.gui.UIAnchorWidget(
                     anchor_x='center',

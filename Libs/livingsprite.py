@@ -1,3 +1,4 @@
+import PIL.Image
 import arcade
 
 
@@ -112,3 +113,66 @@ class LivingSprite(arcade.Sprite):
                     self.cur_frame_idx = 0
                 cur_frame = self.frames[self.cur_frame_idx]
                 self.texture = cur_frame.texture
+
+
+def get_cache_if_possible(texture_name, image):
+    if texture_name in arcade.texture.load_texture.texture_cache:
+        texture = arcade.texture.load_texture.texture_cache[texture_name]
+    else:
+        texture = arcade.Texture(texture_name, image)
+        arcade.texture.load_texture.texture_cache[texture_name] = texture
+    return texture
+
+
+def load_textures_from_webp(resource_name, scale=1):
+    file_name = arcade.resources.resolve_resource_path(resource_name)
+    image_object = PIL.Image.open(file_name)
+    if not image_object.is_animated:
+        raise TypeError(f"The file {resource_name} is not an animated webp.")
+
+    textures = []
+    for frame in range(0, image_object.n_frames, scale):
+        image_object.seek(frame)
+        image = image_object.convert("RGBA")
+        cache_file_name = f"{resource_name}-{frame}-0"
+        texture = get_cache_if_possible(cache_file_name, image)
+        textures.append(texture)
+
+    return textures
+
+
+def load_textures_pair_from_webp(resource_name, scale=1):
+    file_name = arcade.resources.resolve_resource_path(resource_name)
+    image_object = PIL.Image.open(file_name)
+    if not image_object.is_animated:
+        raise TypeError(f"The file {resource_name} is not an animated webp.")
+
+    textures = []
+    textures_flipped = []
+    for frame in range(0, image_object.n_frames, scale):
+        image_object.seek(frame)
+        image = image_object.convert("RGBA")
+        texture = get_cache_if_possible(f"{resource_name}-{frame}-0", image)
+        texture_flipped = get_cache_if_possible(f"{resource_name}-{frame}-1", image.transpose(PIL.Image.FLIP_LEFT_RIGHT))
+        textures.append(texture)
+        textures_flipped.append(texture_flipped)
+
+    return textures, textures_flipped
+
+
+def load_frames_from_webp(resource_name, frame_rate=30, scale=1):
+    file_name = arcade.resources.resolve_resource_path(resource_name)
+    image_object = PIL.Image.open(file_name)
+    if not image_object.is_animated:
+        raise TypeError(f"The file {resource_name} is not an animated webp.")
+
+    frames = []
+    for frame in range(0, image_object.n_frames, scale):
+        image_object.seek(frame)
+        frame_duration = int(1000 / frame_rate)
+        image = image_object.convert("RGBA")
+        texture = get_cache_if_possible(f"{resource_name}-{frame}-0", image)
+        frame = arcade.AnimationKeyframe(0, frame_duration, texture)
+        frames.append(frame)
+
+    return frames
