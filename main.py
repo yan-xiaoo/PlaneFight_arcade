@@ -2,8 +2,11 @@ import random
 import math
 import json
 import sys
-import time
 from collections import namedtuple
+from Libs.clock import BadClock
+from Libs.BackgroundMusicPlayer import BackgroundMusicPlayer
+from Libs.livingsprite import LivingSprite
+from Libs import settings
 
 import arcade
 import arcade.gui
@@ -80,13 +83,7 @@ PLAYER_SPEED = 480  # 像素/秒
 BULLET_SPEED = 300
 PLAYER_BULLET_SPEED = 500
 
-# 读取难度设置（即多少分对应什么样的敌人）
-with open("difficulty.json", 'r') as f:
-    DIFFICULTY = json.load(f)
-
-# 定义分数与难度的对应关系
-SCORE_DIFFICULTY = [[0, 100, 0], [100, 150, 1], [150, 200, 2],
-                    [200, 300, 3], [300, 400, 4]]
+DIFFICULTY = settings.load_difficulty("difficulty.json")
 
 # 读取过场提示
 # 就算过场提示不存在也不会报错，只是没有了而已
@@ -104,14 +101,14 @@ except (UnicodeError, FileNotFoundError):
     pass
 
 DEFAULT_HINTS = {
-        "first_time": True,
-        "skill1": True,
-        "skill2": True,
-        "heal": True,
-        "shield": True,
-        "benefit": True,
-        "roll": True
-    }
+    "first_time": True,
+    "skill1": True,
+    "skill2": True,
+    "heal": True,
+    "shield": True,
+    "benefit": True,
+    "roll": True
+}
 # 读取教程完成状态。不存在教程状态文件的话，假设全部教程都未完成
 try:
     with open("hints.json", 'r') as f:
@@ -131,18 +128,6 @@ except (FileNotFoundError, UnicodeError, ValueError):
     PLAY_FIRE_SOUND = True
 
 
-def get_difficulty(score: int):
-    """
-    获取当前的得分对应什么难度
-    :param score: 得分
-    :return: 对应的难度，一个0～4的数字
-    """
-    for i in SCORE_DIFFICULTY:
-        if i[0] <= score < i[1]:
-            return i[2]
-    return 4
-
-
 def get_rect(obj):
     """
     获取一个有left, right, top, bottom对象的矩形
@@ -150,83 +135,6 @@ def get_rect(obj):
     :return: Rect对象
     """
     return Rect(left=obj.left, right=obj.right, top=obj.top, bottom=obj.bottom)
-
-
-class BackgroundMusicPlayer:
-    """
-    背景音乐播放器，用于播放背景音乐
-    """
-    instance = []
-
-    def __new__(cls):
-        if not cls.instance:
-            self = super().__new__(cls)
-            self.music_player = None
-            self.sound = None
-            cls.instance.append(self)
-        return cls.instance[0]
-
-    def play_bgm(self, source, volume=1.0):
-        """
-        播放背景音乐
-        :param volume: 播放音量，默认为1
-        :param source: 音乐文件
-        """
-        if isinstance(source, list):
-            source = random.choice(source)
-        if isinstance(source, str):
-            source = arcade.Sound(source, streaming=True)
-        if self.sound is not None:
-            if self.sound.file_name == source.file_name and self.sound.is_playing(self.music_player):
-                return
-            self.music_player.pause()
-            self.sound.stop(self.music_player)
-        self.sound = source
-        self.music_player = source.play(volume=volume, loop=True)
-        self.music_player.seek(0)
-
-    def stop(self):
-        self.sound.stop(self.music_player)
-
-    def play_if_not_started(self, sources, volume=1) -> None:
-        """
-        如果sources中的音乐没有被播放，则播放sources[index]对应的音乐
-        :param volume: 音量
-        :param sources: 检查是否在播放的音乐的列表
-        :return: None
-        """
-        if not isinstance(sources, list) and not isinstance(sources, tuple):
-            sources = [sources]
-            index = 0
-        for i, one in enumerate(sources):
-            if isinstance(one, str):
-                sources[i] = arcade.Sound(one, streaming=True)
-        if self.sound is None:
-            self.play_bgm(sources, volume=volume)
-        elif self.sound.file_name not in [name.file_name for name in sources]:
-            self.play_bgm(sources, volume=volume)
-
-
-class BadClock:
-    """
-    一个坏了的钟，仅仅在你更新它时才会走
-    你问这玩意有什么用？用来当作pyglet.clock.Clock的计时函数。这样一来，游戏暂停的时候
-    pyglet.clock.Clock就会觉得时间根本没走过，就不会更新游戏了
-    """
-    def __init__(self):
-        self.time = time.time()
-        self.time_passed = 0
-
-    def __call__(self, *args, **kwargs):
-        return self.time + self.time_passed
-
-    def update(self, time_passed):
-        """
-        更新这个坏了的钟
-        :param time_passed: 距离上一次更新过去的时间
-        :return:None
-        """
-        self.time_passed += time_passed
 
 
 class BackgroundObjects(arcade.Sprite):
@@ -414,90 +322,10 @@ class ChaseFire(Benefit):
 BENEFITS = {Healer: HEAL, Shield: SHIELD, UnlimitedBullet: UNLIMITED_BULLET[1], ChaseFire: CHASE_FIRE[1]}
 
 
-class LivingSprite(arcade.Sprite):
-    """
-    所有会拥有“生命”，会被有“攻击”的物体打死的物体的父类
-    """
-
-    def __init__(self, image, scale=1, health=None, invincible=None, total_health=None, *args, **kwargs):
-        """
-        创建一个有生命的精灵。
-        由于游戏的伤害机制影响，一个东西的无敌时间内，假如其受到更高的伤害，则会转而受更高的伤害。
-        因此，存在一个属性no_hurt，可以使得一个东西在无敌时间内彻底不受伤害。
-        no_hurt = True时无敌时间内：不受任何伤害
-        no_hurt = False时无敌时间内：可能会受到更高的伤害。
-        因为一般情况下，我们需要无敌时的伤害替换机制，因此no_hurt默认为False，且只能手动设为True,无敌时间结束后还原为False
-        :param image: 图片
-        :param scale: 精灵的缩放
-        :param health: 目前的血量
-        :param invincible: 受攻击后的无敌时间长度
-        :param total_health: 总血量，影响被治疗时的治疗量（治疗无法使血量超过上限）
-        :param args: 其他给arcade.Sprite的参数
-        :param kwargs: 其他给arcade.Sprite的参数
-        """
-        super().__init__(image, scale, *args, **kwargs)
-        if health is None:
-            self._health = 1
-            self.total_health = 1
-        else:
-            self._health = health
-            self.total_health = total_health
-        if invincible is None:
-            self.total_invincible = 0.5
-        else:
-            self.total_invincible = invincible
-        self.invincible = 0
-        self.no_hurt = False
-        self._max_damage = 0
-
-    def on_update(self, delta_time: float = 1 / 60):
-        if self.invincible > 0:
-            self.invincible -= delta_time
-        if self.invincible <= 0:
-            self._max_damage = 0
-            self.no_hurt = False
-
-    def on_damaged(self, bullet):
-        if self.invincible <= 0:
-            try:
-                self.health -= bullet.damage
-                self._max_damage = bullet.damage
-            except AttributeError:
-                print("Warning: 出现未规定伤害的子弹，假设其伤害为1")
-                self.health -= 1
-                self._max_damage = 1
-            self.invincible += self.total_invincible
-            if self.health <= 0:
-                self.kill()
-        if hasattr(bullet, 'damage') and self.invincible > 0 and not self.no_hurt:
-            if bullet.damage > self._max_damage:
-                self.health -= bullet.damage
-                self.health += self._max_damage
-                self._max_damage = bullet.damage
-
-    @property
-    def health(self):
-        return self._health
-
-    @health.setter
-    def health(self, new_health):
-        # 控制血量不超过上限
-        new_health = new_health if new_health < self.total_health else self.total_health
-        self.on_health_change(new_health - self.health)
-        self._health = new_health
-
-    def on_health_change(self, delta_health):
-        """
-        该函数会在对象生命值变化时被调用
-        请通过重写该函数实现受伤害时的表现
-        :return:
-        """
-        pass
-
-
 class Boss(LivingSprite):
     def __init__(self, image, game_scene, scale=1, health=1000, invincible=0.1, total_health=1000, *args, **kwargs):
         super().__init__(image=image, scale=scale, health=health, invincible=invincible, total_health=total_health,
+                         enable_hurt_color=True,
                          *args, **kwargs)
         self.towards = 1
         self.game_view: GameView = game_scene
@@ -565,6 +393,7 @@ class Boss(LivingSprite):
         self.game_view.game_scene.add_sprite("Benefit", b)
 
     def on_health_change(self, delta_health):
+        super().on_health_change(delta_health)
         benefit = False
         for one in range(self.health, self.health + abs(delta_health)):
             if one % 50 == 0:
@@ -675,7 +504,7 @@ class Enemy(LivingSprite):
         :param invincible: 飞机受伤后的无敌时间，默认为0.5s
         :param benefit_chance: 飞机死亡后掉落补给的概率，一个小数，默认为0.15（15%）
         """
-        super().__init__(image, scale, health=health, invincible=invincible, *args, **kwargs)
+        super().__init__(image=image, scale=scale, health=health, invincible=invincible, *args, **kwargs)
         self.change_y = -speed
         self.can_fire = fire
         self.total_fire_cd = fire_cd
@@ -737,8 +566,9 @@ class SpecialPlane(Enemy):
     """
     Boss召唤出的小飞机，因为其不会移动，会自己消失所以重写了Enemy
     """
+
     def __init__(self, image, scale=1, life_time=15, *args, **kwargs):
-        super().__init__(image=image, scale=scale, *args, **kwargs)
+        super().__init__(image=image, scale=scale, enable_hurt_color=True, *args, **kwargs)
         self.life = life_time
         # 把速度设为0，就不会移动了
         self.change_y = 0
@@ -831,7 +661,7 @@ class Player(LivingSprite):
     """
 
     def __init__(self, game_view, image=None, scale=1.0, fire_cd=0.25):
-        super().__init__(image, scale, health=5, total_health=5, invincible=0.5)
+        super().__init__(image=image, scale=scale, health=5, total_health=5, invincible=0.5)
         self.bullet_through = False
         self.fire_cd = self.total_fire_cd = fire_cd
         self.game_view: GameView = game_view
@@ -848,7 +678,8 @@ class Player(LivingSprite):
         self.damage = 1
 
         self.invincible_effect = arcade.Sprite()
-        self.invincible_effect.append_texture(arcade.texture.make_soft_circle_texture(100, (95, 185, 240), outer_alpha=100))
+        self.invincible_effect.append_texture(
+            arcade.texture.make_soft_circle_texture(100, (95, 185, 240), outer_alpha=100))
         self.invincible_effect.append_texture(arcade.texture.make_soft_circle_texture(100, (95, 185, 240)))
         self.invincible_effect.visible = False
         self.game_view.game_scene.add_sprite("Player", self.invincible_effect)
@@ -940,11 +771,15 @@ class Player(LivingSprite):
             self.total_fire_cd = 0.05
             self.bullet_through = True
             if not self.game_view.boss_fight:
-                self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "total_fire_cd", 0.25), duration)
-                self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "bullet_through", False), duration)
+                self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "total_fire_cd", 0.25),
+                                                              duration)
+                self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "bullet_through", False),
+                                                              duration)
             else:
-                self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "total_fire_cd", 0.25), duration * 2)
-                self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "bullet_through", False), duration * 2)
+                self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "total_fire_cd", 0.25),
+                                                              duration * 2)
+                self.game_view.clock_not_paused.schedule_once(lambda event: setattr(self, "bullet_through", False),
+                                                              duration * 2)
 
     def chase_bullets(self):
         """
@@ -1383,17 +1218,21 @@ class GameView(arcade.View):
                                       arcade.load_texture(UNLIMITED_BULLET[1]),
                                       [arcade.load_texture(UNLIMITED_BULLET[2][0]),
                                        arcade.load_texture(UNLIMITED_BULLET[2][1])]]
-        self.player_skill1_image = TextureButton(textures=[self.player_skill1_texture[0], self.player_skill1_texture[1]], width=64,
-                                                 height=64, enable=False, update_time=0.15)
-        self.player_skill1_hint = TextureButton(textures=self.player_skill1_texture[2], width=50, height=50, cur_index=1)
+        self.player_skill1_image = TextureButton(
+            textures=[self.player_skill1_texture[0], self.player_skill1_texture[1]], width=64,
+            height=64, enable=False, update_time=0.15)
+        self.player_skill1_hint = TextureButton(textures=self.player_skill1_texture[2], width=50, height=50,
+                                                cur_index=1)
 
         self.player_skill2_texture = [arcade.load_texture(CHASE_FIRE[0]),
                                       arcade.load_texture(CHASE_FIRE[1]),
                                       [arcade.load_texture(CHASE_FIRE[2][0]),
                                        arcade.load_texture(CHASE_FIRE[2][1])]]
-        self.player_skill2_image = TextureButton(textures=[self.player_skill2_texture[0], self.player_skill2_texture[1]], width=64,
-                                                 height=64, enable=False, update_time=0.15)
-        self.player_skill2_hint = TextureButton(textures=self.player_skill2_texture[2], width=50, height=50, cur_index=1)
+        self.player_skill2_image = TextureButton(
+            textures=[self.player_skill2_texture[0], self.player_skill2_texture[1]], width=64,
+            height=64, enable=False, update_time=0.15)
+        self.player_skill2_hint = TextureButton(textures=self.player_skill2_texture[2], width=50, height=50,
+                                                cur_index=1)
         self.skill_selected = 0
 
         self.game_v_box_right.add(self.player_skill1_image.with_space_around(top=30))
@@ -1570,7 +1409,7 @@ class GameView(arcade.View):
                                                              scale=random.randint(75, 125) / 100))
             # 然后，随机生成敌人
             if len(self.game_scene['Enemy']) <= 2 and random.random() < 0.1 and not self.boss_fight:
-                spawn_enemy(self, [1, 3], str(get_difficulty(self.score)))
+                spawn_enemy(self, [1, 3], str(settings.get_difficulty(self.score)))
 
             # 检查Boss该不该生成
             if self.score > 500 and not self.boss_fight:
@@ -1621,7 +1460,7 @@ class GameView(arcade.View):
                     if one_enemy.health <= 0:
                         explode = Explosion((one_enemy.center_x, one_enemy.center_y))
                         self.game_scene.add_sprite("Explosion", explode)
-                        self.score += 20
+                        self.score += 10
                         break
 
             if self.player.health > 0:
@@ -1641,7 +1480,7 @@ class GameView(arcade.View):
                     if one_enemy.health <= 0:
                         explode = Explosion((one_enemy.center_x, one_enemy.center_y))
                         self.game_scene.add_sprite("Explosion", explode)
-                        self.score += 20
+                        self.score += 10
                     self.player.on_damaged(one_enemy)
                     if self.player.health <= 0:
                         explode = Explosion((self.player.center_x, self.player.center_y))
@@ -1656,7 +1495,6 @@ class GameView(arcade.View):
                 self.end_game(False)
             if self.boss_fight and self.boss.health <= 0:
                 self.end_game(True)
-                self.clock_not_paused.schedule_interval_soft()
 
     def end_game(self, win: bool):
         """
@@ -1771,8 +1609,8 @@ class GameView(arcade.View):
     def on_disconnect(self, controller):
         self.joystick.close()
         self.joystick.remove_handlers(on_button_press=self.on_joybutton_press,
-                                    on_button_release=self.on_joybutton_release,
-                                    on_stick_motion=self.on_stick_motion)
+                                      on_button_release=self.on_joybutton_release,
+                                      on_stick_motion=self.on_stick_motion)
         self.joystick = None
         print("joystick out")
 
