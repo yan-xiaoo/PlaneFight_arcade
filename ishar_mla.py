@@ -29,13 +29,6 @@ SCREEN_HEIGHT = 750
 SCREEN_TITLE = "Plane War"
 
 # 定义背景速度与背景图片的路径
-BACKGROUND_SPEED = 480  # 像素/秒
-BACKGROUND_LISTS = ["images/meteorBrown_small2.png",
-                    "images/meteorBrown_small2.png",
-                    "images/meteorGrey_small1.png",
-                    "images/meteorGrey_small2.png",
-                    "images/background_star.png"]
-
 BACKGROUND_COLOR = (12, 20, 53)
 BACKGROUND_COLOR2 = (10, 18, 40)
 
@@ -53,7 +46,7 @@ ENEMY = ["images/enemy1.png", "images/enemy2.png",
 BOSS = arcade.load_texture("dlc_ishar_mla/images/normal_start.png")
 BOSS_MOVE = load_textures_pair_from_webp("dlc_ishar_mla/images/normal_move.webp", scale=3)
 BOSS_SKILL = load_textures_pair_from_webp("dlc_ishar_mla/images/normal_heal.webp", scale=3)
-BOSS_DIE = load_textures_pair_from_webp("dlc_ishar_mla/images/normal_die.webp", scale=3)
+BOSS_DIE = load_textures_pair_from_webp("dlc_ishar_mla/images/normal_die.webp", scale=1)
 BOSS_ATTACK = load_textures_pair_from_webp("dlc_ishar_mla/images/normal_attack.webp", scale=3)
 BOSS_ATTACK_1 = "dlc_ishar_mla/images/boss_attack_1.png"
 BOSS_THROW_BALL = 'dlc_ishar_mla/images/throw_ball.png'
@@ -605,12 +598,12 @@ class Boss(LivingSprite):
         一技能：Boss持续发射5发子弹，间隔1秒，弱追踪我方。
         :return:
         """
-        self.game_view.clock_not_paused.schedule_interval_soft(self._shot, 1)
+        self.game_view.clock_not_paused.schedule_interval_soft(self._shot, 0.75)
         self._skill1_count = 0
 
     def _shot(self, _=None):
-        bullet = Bullet((self.center_x, self.bottom), BOSS_ATTACK_1, chase=SIMPLE, speed=300,
-                        player=self.game_view.player, scale=0.75)
+        bullet = ForcastBullet((self.center_x, self.bottom), image=BOSS_ATTACK_1, speed=500,
+                               player=self.game_view.player, scale=0.75)
         self.game_view.game_scene.add_sprite("EnemyBullet", bullet)
         self._skill1_count += 1
         if self._skill1_count >= 5:
@@ -663,8 +656,8 @@ class Boss(LivingSprite):
 
     def _many_bullets(self, _=None):
         self._skill3_count += 1
-        bullet1 = Bullet((self.center_x, self.bottom), BOSS_ATTACK_1, chase=SIMPLE, speed=350,
-                         player=self.game_view.player)
+        bullet1 = ForcastBullet((self.center_x, self.bottom), image=BOSS_ATTACK_1, speed=350,
+                                player=self.game_view.player)
         bullet2 = Bullet((self.center_x - 30, self.bottom), BOSS_ATTACK_1, chase=SIMPLE, speed=350,
                          player=self.game_view.player)
         bullet3 = Bullet((self.center_x + 30, self.bottom), BOSS_ATTACK_1, chase=SIMPLE, speed=350,
@@ -758,33 +751,6 @@ class Enemy(LivingSprite):
             self.bullets.append(bullet)
 
 
-class SpecialPlane(Enemy):
-    """
-    Boss召唤出的小飞机，因为其不会移动，会自己消失所以重写了Enemy
-    """
-
-    def __init__(self, image, scale=1, life_time=15, *args, **kwargs):
-        super().__init__(image=image, scale=scale, *args, **kwargs)
-        self.life = life_time
-        # 把速度设为0，就不会移动了
-        self.change_y = 0
-
-    def on_update(self, delta_time: float = 1 / 60):
-        super().on_update(delta_time)
-        self.life -= delta_time
-        if self.life <= 0:
-            self.kill()
-
-    def kill(self):
-        # 检查自己是否是被击败而不是自然消失
-        if self.life > 0:
-            benefit = random.choice(list(BENEFITS.keys()))
-            self.game_view.game_scene.add_sprite("Benefit",
-                                                 benefit(image=BENEFITS[benefit], scale=2,
-                                                         center=(self.center_x, self.center_y)))
-        super().kill()
-
-
 class Bullet(arcade.Sprite):
     def __init__(self, center, image=None, chase=NO, player=None, damage=1, chase_time=1.0, speed=BULLET_SPEED,
                  **kwargs):
@@ -840,6 +806,38 @@ class Bullet(arcade.Sprite):
         self.center_x += self.change_x * delta_time
 
 
+class ForcastBullet(arcade.Sprite):
+    def __init__(self, center, player: "Player", image=None, speed=BULLET_SPEED, *args, **kwargs):
+        super().__init__(image, *args, **kwargs)
+        self.center_x = center[0]
+        self.center_y = center[1]
+        self.player = player
+
+        time_to_chase_player = math.sqrt(
+            (self.center_x - player.center_x) ** 2 + (self.center_y - player.center_y) ** 2) / \
+                               speed
+        if player.left <= 1 or player.right >= arcade.get_window().width - 1 or player.top >= arcade.get_window().height - 1 \
+                or player.bottom <= 1:
+            time_to_chase_player = 0
+        player_next_x = player.center_x + player.average_change_x * time_to_chase_player
+        player_next_y = player.center_y + player.average_change_y * time_to_chase_player
+        x_diff = player_next_x - self.center_x
+        y_diff = player_next_y - self.center_y
+        angle = math.atan2(y_diff, x_diff)
+        self.angle = math.degrees(angle) - 90
+        self.change_y = math.sin(angle) * speed
+        self.change_x = math.cos(angle) * speed
+        self.damage = 1
+
+    def on_update(self, delta_time: float = 1 / 60):
+        if self.player is not None and self.player.health <= 0:
+            self.kill()
+        if self.left > SCREEN_WIDTH or self.right < 0 or self.bottom > SCREEN_HEIGHT or self.top < 0:
+            self.kill()
+        self.center_y += self.change_y * delta_time
+        self.center_x += self.change_x * delta_time
+
+
 class ThrowBall(arcade.Sprite):
     def __init__(self, image, player_position, center, scale=1, damage=1, speed=300, living_time=10, **kwargs):
         super().__init__(image, scale, **kwargs)
@@ -878,7 +876,7 @@ class ThrowBall(arcade.Sprite):
 
     def on_damaged(self, player):
         if self.invincible <= 0:
-            self.living_time -= 2 * player.damage
+            self.living_time -= 3 * player.damage
             self.invincible += 0.1
 
 
@@ -971,18 +969,16 @@ class Player(LivingSprite):
         self.skill1_time = 0
         self.skill2_break = 0
 
+        self.average_change_x = 0
+        self.average_change_y = 0
+        self._change_x_record = []
+        self._change_y_record = []
+
     def on_update(self, delta_time=None):
         super().on_update(delta_time)
         self.center_y += self.change_y * delta_time
         self.center_x += self.change_x * delta_time
         self.fire_cd -= delta_time
-
-        if self.change_y == self.change_x == 0:
-            self.fire_sprite.visible = False
-        else:
-            self.fire_sprite.visible = True
-        self.fire_sprite.center_x = self.center_x
-        self.fire_sprite.top = self.bottom
 
         # 重置玩家位置，阻止其跑出屏幕
         if self.top > SCREEN_HEIGHT - 1:
@@ -993,6 +989,23 @@ class Player(LivingSprite):
             self.left = 1
         if self.right > SCREEN_WIDTH - 1:
             self.right = SCREEN_WIDTH - 1
+
+        if self.change_y == self.change_x == 0:
+            self.fire_sprite.visible = False
+        else:
+            self.fire_sprite.visible = True
+        self.fire_sprite.center_x = self.center_x
+        self.fire_sprite.top = self.bottom
+
+        if len(self._change_x_record) >= 120:
+            self._change_x_record.pop(0)
+        if len(self._change_y_record) >= 120:
+            self._change_y_record.pop(0)
+        self._change_x_record.append(self.change_x)
+        self._change_y_record.append(self.change_y)
+
+        self.average_change_x = sum(self._change_x_record) / len(self._change_x_record)
+        self.average_change_y = sum(self._change_y_record) / len(self._change_y_record)
 
     def update_animation(self, delta_time: float = 1 / 60):
         # 只剩一点血时，在红蓝色间闪烁
