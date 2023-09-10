@@ -72,9 +72,9 @@ HEALTH_IMAGES = ["images/heart_empty.png", "images/heart.png"]
 CANCEL_IMAGE = "images/cancel.png"
 
 FIRE_SOUND = "sound/laser1.wav"
-BATTLE_SOUND = "sound/battle.wav"
-MENU_SOUND = "sound/menu.wav"
-BOSS_SOUND = "sound/boss.wav"
+BATTLE_SOUND = "sound/battle.mp3"
+MENU_SOUND = "sound/menu.mp3"
+BOSS_SOUND = "sound/boss.mp3"
 
 WIN_SOUND = "sound/win.mp3"
 LOSE_SOUND = "sound/lose.mp3"
@@ -699,13 +699,6 @@ class Player(LivingSprite):
         self.center_x += self.change_x * delta_time
         self.fire_cd -= delta_time
 
-        if self.change_y == self.change_x == 0:
-            self.fire_sprite.visible = False
-        else:
-            self.fire_sprite.visible = True
-        self.fire_sprite.center_x = self.center_x
-        self.fire_sprite.top = self.bottom
-
         # 重置玩家位置，阻止其跑出屏幕
         if self.top > SCREEN_HEIGHT - 1:
             self.top = SCREEN_HEIGHT - 1
@@ -715,6 +708,13 @@ class Player(LivingSprite):
             self.left = 1
         if self.right > SCREEN_WIDTH - 1:
             self.right = SCREEN_WIDTH - 1
+
+        if self.change_y == self.change_x == 0:
+            self.fire_sprite.visible = False
+        else:
+            self.fire_sprite.visible = True
+        self.fire_sprite.center_x = self.center_x
+        self.fire_sprite.top = self.bottom
 
     def update_animation(self, delta_time: float = 1 / 60):
         # 只剩一点血时，在红蓝色间闪烁
@@ -1299,7 +1299,12 @@ class GameView(arcade.View):
             # 目前能做的只有在macOS中时完全禁用手柄
             self.joystick_manager = pyglet.input.ControllerManager()
             self.joystick_manager.push_handlers(on_connect=self.on_connect, on_disconnect=self.on_disconnect)
-        self.joystick = None
+
+        if pyglet.input.get_controllers():
+            self.joystick = pyglet.input.get_controllers()[0]
+            self.on_connect(self.joystick)
+        else:
+            self.joystick = None
         self.joystick_choose_skill = False
 
         self.firing = False
@@ -1623,6 +1628,8 @@ class GameView(arcade.View):
             self.use_selected_skill()
         if button == 'start':
             self.on_click_pause()
+        if button == 'back':
+            self.exit_button.on_click(None)
 
     def on_joybutton_release(self, joystick, button):
         if button == 'y':
