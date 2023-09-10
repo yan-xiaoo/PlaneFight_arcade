@@ -1324,6 +1324,7 @@ class GameView(arcade.View):
 
         self.paused = False
         self.fps_enable = False
+        self.ui_enable = True
         self.score = 0
         self.score_enable = True
         if self.boss_fight:
@@ -1344,7 +1345,8 @@ class GameView(arcade.View):
     def on_draw(self):
         self.clear()
         self.game_scene.draw()
-        self.game_ui_manager.draw()
+        if self.ui_enable:
+            self.game_ui_manager.draw()
 
     def update(self, delta_time: float):
         """
@@ -1662,6 +1664,12 @@ class GameView(arcade.View):
             self.player.unlimited_bullets(5)
         if symbol == arcade.key.KEY_2:
             self.player.chase_bullets()
+        if symbol == UI_KEY:
+            self.ui_enable = not self.ui_enable
+            if self.ui_enable:
+                self.game_ui_manager.enable()
+            else:
+                self.game_ui_manager.disable()
 
     def on_key_release(self, symbol: object, modifiers):
         """Called when the user releases a key. """

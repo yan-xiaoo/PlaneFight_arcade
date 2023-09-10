@@ -41,6 +41,13 @@ class BackgroundMusicPlayer:
                 self.sound.stop(self.music_player)
         self.sound = source
         self.music_player = source.play(volume=volume, loop=True)
+        # 如果抽到的音乐刚刚播放到一半被停了，会接着播放而不是从头开始
+        # 这段代码把音乐从头开始播放
+        # AttributeError是OpenAL解码器可能出的一个错误，只会在刚启动时出现，没有实际影响。
+        try:
+            self.music_player.seek(0)
+        except AttributeError:
+            pass
 
     def stop(self):
         self.sound.stop(self.music_player)

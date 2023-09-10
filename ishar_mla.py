@@ -814,13 +814,18 @@ class ForcastBullet(arcade.Sprite):
         self.player = player
 
         time_to_chase_player = math.sqrt(
-            (self.center_x - player.center_x) ** 2 + (self.center_y - player.center_y) ** 2) / \
-                               speed
-        if player.left <= 1 or player.right >= arcade.get_window().width - 1 or player.top >= arcade.get_window().height - 1 \
-                or player.bottom <= 1:
-            time_to_chase_player = 0
+            (self.center_x - player.center_x) ** 2 + (self.center_y - player.center_y) ** 2) / speed
         player_next_x = player.center_x + player.average_change_x * time_to_chase_player
         player_next_y = player.center_y + player.average_change_y * time_to_chase_player
+
+        if player_next_x < 0:
+            player_next_x = 0
+        elif player_next_x > SCREEN_WIDTH:
+            player_next_x = SCREEN_WIDTH
+        if player_next_y < 0:
+            player_next_y = 0
+        elif player_next_y > SCREEN_HEIGHT:
+            player_next_y = SCREEN_HEIGHT
         x_diff = player_next_x - self.center_x
         y_diff = player_next_y - self.center_y
         angle = math.atan2(y_diff, x_diff)
@@ -1611,6 +1616,7 @@ class GameView(arcade.View):
 
         self.paused = False
         self.fps_enable = False
+        self.ui_enable = True
         self.score = 0
         self.score_enable = True
         if self.boss_fight:
@@ -1640,7 +1646,8 @@ class GameView(arcade.View):
     def on_draw(self):
         self.clear()
         self.game_scene.draw()
-        self.game_ui_manager.draw()
+        if self.ui_enable:
+            self.game_ui_manager.draw()
 
     def update(self, delta_time: float):
         """
@@ -1940,6 +1947,12 @@ class GameView(arcade.View):
             self.player.unlimited_bullets(5)
         if symbol == arcade.key.KEY_2:
             self.player.chase_bullets()
+        if symbol == UI_KEY:
+            self.ui_enable = not self.ui_enable
+            if self.ui_enable:
+                self.game_ui_manager.enable()
+            else:
+                self.game_ui_manager.disable()
 
     def on_key_release(self, symbol: object, modifiers):
         """Called when the user releases a key. """
